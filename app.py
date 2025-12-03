@@ -9,7 +9,7 @@ from utils import calculate_next_review
 st.set_page_config(
     page_title="AI 暗記カード",
     page_icon="🧠",
-    layout="centered"
+    layout="wide"
 )
 
 # Custom CSS
@@ -89,115 +89,64 @@ st.markdown("""
         transition: all 0.2s;
     }
     
-    /* Segmented Control Styling */
-    .stSegmentedControl {
-        margin-bottom: 20px;
-    }
-    
-    .stSegmentedControl button {
-        font-size: 1.2rem !important;
-        padding: 10px 20px !important;
-        height: auto !important;
-    }
-    
-    div[data-testid="stSegmentedControl"] {
-        transform: scale(2.0);
-        transform-origin: center top;
+    /* Tab Navigation Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        background-color: #ffffff;
+        padding: 0;
+        border-bottom: 3px solid #e5e7eb;
         margin-bottom: 30px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-size: 24px;
+        font-weight: 700;
+        padding: 20px 40px;
+        background-color: #f8f9fa;
+        border-radius: 0;
+        color: #6b7280;
+        transition: all 0.3s;
+        flex: 1;
+        text-align: center;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e5e7eb;
+        color: #1f2937;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #10b981;
+        color: white;
+    }
+    
+    /* Hide the red underline on active tab */
+    .stTabs [data-baseweb="tab-highlight"] {
+        display: none;
     }
 
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.title("🧠 AI 暗記カード")
-    
-    # Check environment variable
-    env_api_key = os.environ.get("GEMINI_API_KEY")
-    if env_api_key:
-        api_key = env_api_key
-        st.success("✅ APIキーを環境変数から読み込みました")
-    else:
-        api_key = st.text_input("Gemini APIキー", type="password", help="Google GeminiのAPIキーを入力してください")
-    
-    st.markdown("---")
-    st.markdown("Powered by Gemini 2.5 Flash (via API)")
+# Header
+st.title("🧠 AI 暗記カード")
 
-# Top Navigation (Pill Style)
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    page = st.segmented_control("メニュー", ["復習する", "カードを追加", "カード管理"], default="復習する", label_visibility="collapsed")
+# API Key (top right)
+env_api_key = os.environ.get("GEMINI_API_KEY")
+if env_api_key:
+    api_key = env_api_key
+    st.success("✅ APIキーを環境変数から読み込みました")
+else:
+    api_key = st.text_input("Gemini APIキー", type="password", help="Google GeminiのAPIキーを入力してください", key="api_key_input")
 
-if page is None:
-    page = "復習する"
+st.markdown("---")
 
-# Add Cards Page
-if page == "カードを追加":
-    st.title("📝 新しいカードを追加")
-    st.markdown("AIを使って、テキストから暗記カードを自動生成します。")
-    
-    # Category selection
-    CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
-    selected_category = st.selectbox("カテゴリ", CATEGORIES)
-
-    # Title input (common for all generated cards)
-    card_title = st.text_input("カードのタイトル（共通）", placeholder="例: Python基礎, 歴史年号")
-
-    source_text = st.text_area("テキストを貼り付けてください:", height=400, placeholder="覚えたい記事、ノート、単語リストなどをここに貼り付けてください...")
-    
-    # Optional keyword input
-    keywords = st.text_input("重要な用語（オプション）", placeholder="カンマ区切りで入力（例: Python, API, データベース）")
-    
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        generate_btn = st.button("✨ 生成する", type="primary")
-    
-    if generate_btn:
-        if not api_key:
-            st.error("サイドバーにGemini APIキーを入力してください。")
-        elif not source_text:
-            st.warning("テキストを入力してください。")
-        else:
-            with st.spinner("Geminiがカードを生成中..."):
-                generated_cards = generate_flashcards(source_text, api_key, keywords)
-                
-                if generated_cards:
-                    st.session_state.generated_cards = generated_cards
-                    st.success(f"{len(generated_cards)} 枚のカードを生成しました！")
-                else:
-                    st.error("カードの生成に失敗しました。もう一度試してください。")
-
-    if "generated_cards" in st.session_state:
-        st.subheader("プレビュー & 保存")
-        
-        with st.form("save_cards_form"):
-            cards_to_save = []
-            for i, card in enumerate(st.session_state.generated_cards):
-                st.markdown(f"**カード {i+1}**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    q = st.text_input(f"問題", value=card['question'], key=f"q_{i}", label_visibility="collapsed", placeholder="問題")
-                with col2:
-                    a = st.text_input(f"答え", value=card['answer'], key=f"a_{i}", label_visibility="collapsed", placeholder="答え")
-                cards_to_save.append({"question": q, "answer": a})
-                st.markdown("---")
-            
-            submit_col1, submit_col2 = st.columns([1, 4])
-            with submit_col1:
-                if st.form_submit_button("💾 デッキに保存", type="primary"):
-                    count = 0
-                    for card in cards_to_save:
-                        if card['question'] and card['answer']:
-                            add_card(card['question'], card['answer'], title=card_title, category=selected_category)
-                            count += 1
-                    st.success(f"{count} 枚のカードを保存しました！")
-                    del st.session_state.generated_cards
-                    st.rerun()
+# Tab Navigation
+tab1, tab2, tab3 = st.tabs(["📚 復習する", "📝 カードを追加", "🗂️ カード管理"])
 
 # Review Page
-elif page == "復習する":
-    st.title("📚 復習セッション")
+with tab1:
+    st.title("復習セッション")
     
     cards = load_cards()
     today = datetime.date.today().isoformat()
@@ -269,8 +218,72 @@ elif page == "復習する":
                 if st.button("簡単 (5)", type="primary", use_container_width=True):
                     process_review(5)
 
+# Add Cards Page
+with tab2:
+    st.title("📝 新しいカードを追加")
+    st.markdown("AIを使って、テキストから暗記カードを自動生成します。")
+    
+    # Category selection
+    CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
+    selected_category = st.selectbox("カテゴリ", CATEGORIES)
+
+    # Title input (common for all generated cards)
+    card_title = st.text_input("カードのタイトル（共通）", placeholder="例: Python基礎, 歴史年号")
+
+    source_text = st.text_area("テキストを貼り付けてください:", height=400, placeholder="覚えたい記事、ノート、単語リストなどをここに貼り付けてください...")
+    
+    # Optional keyword input
+    keywords = st.text_input("重要な用語（オプション）", placeholder="カンマ区切りで入力（例: Python, API, データベース）")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        generate_btn = st.button("✨ 生成する", type="primary")
+    
+    if generate_btn:
+        if not api_key:
+            st.error("サイドバーにGemini APIキーを入力してください。")
+        elif not source_text:
+            st.warning("テキストを入力してください。")
+        else:
+            with st.spinner("Geminiがカードを生成中..."):
+                generated_cards = generate_flashcards(source_text, api_key, keywords)
+                
+                if generated_cards:
+                    st.session_state.generated_cards = generated_cards
+                    st.success(f"{len(generated_cards)} 枚のカードを生成しました！")
+                else:
+                    st.error("カードの生成に失敗しました。もう一度試してください。")
+
+    if "generated_cards" in st.session_state:
+        st.subheader("プレビュー & 保存")
+        
+        with st.form("save_cards_form"):
+            cards_to_save = []
+            for i, card in enumerate(st.session_state.generated_cards):
+                st.markdown(f"**カード {i+1}**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    q = st.text_input(f"問題", value=card['question'], key=f"q_{i}", label_visibility="collapsed", placeholder="問題")
+                with col2:
+                    a = st.text_input(f"答え", value=card['answer'], key=f"a_{i}", label_visibility="collapsed", placeholder="答え")
+                cards_to_save.append({"question": q, "answer": a})
+                st.markdown("---")
+            
+            submit_col1, submit_col2 = st.columns([1, 4])
+            with submit_col1:
+                if st.form_submit_button("💾 デッキに保存", type="primary"):
+                    count = 0
+                    for card in cards_to_save:
+                        if card['question'] and card['answer']:
+                            add_card(card['question'], card['answer'], title=card_title, category=selected_category)
+                            count += 1
+                    st.success(f"{count} 枚のカードを保存しました！")
+                    del st.session_state.generated_cards
+                    st.rerun()
+
+
 # Manage Cards Page
-elif page == "カード管理":
+with tab3:
     st.title("🗂️ カード管理")
     
     cards = load_cards()
@@ -280,6 +293,21 @@ elif page == "カード管理":
         st.info("まだカードがありません。「カードを追加」メニューから作成してください。")
     else:
         st.markdown(f"**登録済みカード: {len(cards)} 枚**")
+        
+        # Search box
+        search_query = st.text_input("🔍 検索", placeholder="問題、答え、タイトルで検索...", key="search_cards")
+        
+        # Filter cards by search query
+        if search_query:
+            filtered_cards = []
+            for card in cards:
+                query_lower = search_query.lower()
+                if (query_lower in card['question'].lower() or 
+                    query_lower in card['answer'].lower() or 
+                    query_lower in card.get('title', '').lower()):
+                    filtered_cards.append(card)
+            cards = filtered_cards
+            st.markdown(f"*検索結果: {len(filtered_cards)} 枚*")
         
         # Group cards by category
         tabs = st.tabs(CATEGORIES)
@@ -291,26 +319,42 @@ elif page == "カード管理":
                 if not category_cards:
                     st.info(f"{category} のカードはありません。")
                 else:
-                    for j, card in enumerate(category_cards):
-                        with st.expander(f"カード {j+1}: {card['question'][:20]}..."):
-                            with st.form(key=f"edit_form_{card['id']}"):
-                                new_category = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")))
-                                new_title = st.text_input("タイトル", value=card.get('title', ''))
-                                new_q = st.text_input("問題", value=card['question'])
-                                new_a = st.text_input("答え", value=card['answer'])
+                    # Group cards by title
+                    grouped_cards = {}
+                    for card in category_cards:
+                        title = card.get('title', '').strip()
+                        if not title:
+                            title = "📝 無題"
+                        if title not in grouped_cards:
+                            grouped_cards[title] = []
+                        grouped_cards[title].append(card)
+                    
+                    # Display cards grouped by title
+                    for title, cards_in_group in grouped_cards.items():
+                        with st.expander(f"📚 {title} ({len(cards_in_group)}枚)", expanded=False):
+                            for j, card in enumerate(cards_in_group):
+                                st.markdown(f"**カード {j+1}**: {card['question'][:30]}...")
+                                with st.form(key=f"edit_form_{card['id']}"):
+                                    new_category = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")), key=f"cat_{card['id']}")
+                                    new_title = st.text_input("タイトル", value=card.get('title', ''), key=f"title_{card['id']}")
+                                    new_q = st.text_input("問題", value=card['question'], key=f"q_{card['id']}")
+                                    new_a = st.text_input("答え", value=card['answer'], key=f"a_{card['id']}")
+                                    
+                                    col1, col2 = st.columns([1, 4])
+                                    with col1:
+                                        update_btn = st.form_submit_button("更新", type="primary")
+                                    with col2:
+                                        delete_check = st.checkbox("このカードを削除する", key=f"del_{card['id']}")
+                                    
+                                    if update_btn:
+                                        if delete_check:
+                                            delete_card(card['id'])
+                                            st.success("カードを削除しました")
+                                            st.rerun()
+                                        else:
+                                            update_card_content(card['id'], new_q, new_a, new_title, new_category)
+                                            st.success("カードを更新しました")
+                                            st.rerun()
                                 
-                                col1, col2 = st.columns([1, 4])
-                                with col1:
-                                    update_btn = st.form_submit_button("更新", type="primary")
-                                with col2:
-                                    delete_check = st.checkbox("このカードを削除する", key=f"del_{card['id']}")
-                                
-                                if update_btn:
-                                    if delete_check:
-                                        delete_card(card['id'])
-                                        st.success("カードを削除しました")
-                                        st.rerun()
-                                    else:
-                                        update_card_content(card['id'], new_q, new_a, new_title, new_category)
-                                        st.success("カードを更新しました")
-                                        st.rerun()
+                                if j < len(cards_in_group) - 1:
+                                    st.markdown("---")
