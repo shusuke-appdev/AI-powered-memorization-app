@@ -1,84 +1,153 @@
-# 🧠 AI 暗記カードアプリ
+# 🧠 AI 暗記カード
 
-Google Gemini AIを使用してテキストから暗記カードを自動生成し、忘却曲線に基づいた復習スケジュールを管理できる学習支援Webアプリです。
+AIを活用した穴埋め式フラッシュカードアプリ。Geminiが自動でテキストから暗記カードを生成し、SM-2アルゴリズムで効率的な復習スケジュールを管理します。
 
-## ✨ 特徴
+## ✨ 機能
 
-- 🤖 **AI自動生成**: テキストを貼り付けるだけで、AIが自動的に暗記カードを作成
-- 📅 **スマート復習**: 忘却曲線に基づいた最適な復習スケジュール
-- 📱 **マルチデバイス対応**: スマホ・タブレット・PCからアクセス可能
-- 🏷️ **カテゴリ管理**: 法律科目ごとにカードを分類・整理
-- 💾 **自動保存**: データは自動的に保存され、いつでも続きから学習可能
+### 📝 カード生成
+- テキストを貼り付けるだけでAIが自動で穴埋め問題を生成
+- 原文を維持したまま、重要語句のみを空欄化
+- キーワード指定で特定の用語をターゲットにした問題作成
 
-## 🚀 使い方
+### 📚 復習システム
+- **SM-2アルゴリズム**による科学的な復習スケジュール
+- 4段階評価（忘れた/難しい/普通/簡単）で次回復習日を自動計算
+- 今日の復習カードを優先表示
 
-### 1. アプリにアクセス
-ブラウザでアプリのURLを開くだけ！インストール不要です。
+### 👥 マルチユーザー対応
+- ユーザー登録・ログイン機能
+- 各ユーザーの独立したカードデータベース
+- 自動ログイン（30日間セッション保持）
+- ユーザー別APIキー管理
 
-### 2. APIキーの設定
-初回のみ、Google Gemini APIキーをサイドバーに入力してください。
+### ☁️ クラウドデータ永続化
+- **Supabase**（PostgreSQL）によるデータ保存
+- アプリ再起動後もデータが維持
+- 複数デバイスからアクセス可能
 
-> 💡 **APIキーの取得方法**: [Google AI Studio](https://makersuite.google.com/app/apikey) から無料で取得できます
+---
 
-### 3. カードを作成
-1. 「カードを追加」メニューを選択
-2. カテゴリを選択（民法、商法、刑法など）
-3. 学習したいテキストを貼り付け
-4. 「✨ 生成する」ボタンをクリック
-5. AIが自動的に問題と答えのペアを生成
+## 🚀 デプロイ済みアプリ
 
-### 4. 復習する
-1. 「復習する」メニューを選択
-2. その日に復習すべきカードが表示されます
-3. 答えを確認して、記憶の定着度を選択
-4. 次回の復習日が自動的に調整されます
+[アプリを開く](https://your-app-name.streamlit.app)
 
-### 5. カードを管理
-「カード管理」メニューで、作成したカードを編集・削除できます。
+---
 
-## 🛠️ 技術スタック
+## 🛠️ ローカル開発
 
-- **フロントエンド**: Streamlit
-- **AI**: Google Gemini 2.5 Flash API
-- **データ保存**: JSON形式
-- **ホスティング**: Streamlit Cloud
+### 必要条件
+- Python 3.9+
+- Gemini API キー
+- Supabase プロジェクト
 
-## 📂 プロジェクト構成
+### セットアップ
 
-```
-.
-├── app.py              # メインアプリケーション
-├── gemini_client.py    # Gemini API連携
-├── storage.py          # データ保存・読み込み
-├── utils.py            # 忘却曲線ロジック
-└── requirements.txt    # 依存パッケージ
-```
-
-## 🔧 ローカル開発
-
-このリポジトリをクローンしてローカルで実行することもできます：
-
+1. **リポジトリをクローン**
 ```bash
-# リポジトリをクローン
-git clone https://github.com/あなたのユーザー名/memorization-app.git
-cd memorization-app
+git clone https://github.com/your-username/memorization_app.git
+cd memorization_app
+```
 
-# 依存パッケージをインストール
+2. **依存関係をインストール**
+```bash
 pip install -r requirements.txt
+```
 
-# 環境変数を設定
-export GEMINI_API_KEY="your-api-key-here"
+3. **環境変数を設定**
+```bash
+# PowerShell
+$env:SUPABASE_URL = "https://xxx.supabase.co"
+$env:SUPABASE_KEY = "eyJ..."
+```
 
-# アプリを起動
+4. **アプリを起動**
+```bash
 streamlit run app.py
 ```
 
-## 📝 ライセンス
+---
 
-このプロジェクトは個人的な学習支援ツールとして開発されました。
+## ☁️ Streamlit Cloud へのデプロイ
+
+### 1. GitHubにプッシュ
+```bash
+git add .
+git commit -m "Deploy app"
+git push
+```
+
+### 2. Streamlit Cloud で設定
+
+1. [share.streamlit.io](https://share.streamlit.io) にログイン
+2. 「New app」→ リポジトリを選択
+3. **Settings** → **Secrets** に以下を追加:
+
+```toml
+SUPABASE_URL = "https://xxx.supabase.co"
+SUPABASE_KEY = "eyJ..."
+```
+
+---
+
+## 📁 ファイル構成
+
+```
+memorization_app/
+├── app.py              # メインアプリケーション
+├── auth.py             # ユーザー認証・セッション管理
+├── storage.py          # カードデータ管理
+├── database.py         # Supabase接続
+├── gemini_client.py    # Gemini API連携
+├── utils.py            # SM-2アルゴリズム
+├── requirements.txt    # 依存関係
+└── .gitignore
+```
+
+---
+
+## 🗄️ データベース構造（Supabase）
+
+### users テーブル
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| id | UUID | ユーザーID |
+| username | TEXT | ユーザー名 |
+| password_hash | TEXT | パスワード（ハッシュ） |
+| api_key | TEXT | Gemini APIキー |
+| created_at | TIMESTAMP | 登録日時 |
+
+### cards テーブル
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| id | UUID | カードID |
+| user_id | UUID | 所有者のユーザーID |
+| question | TEXT | 問題文（穴埋め） |
+| answer | TEXT | 答え |
+| title | TEXT | カードのタイトル |
+| category | TEXT | カテゴリ |
+| ease_factor | FLOAT | 難易度係数 |
+| interval | INT | 復習間隔（日） |
+| repetitions | INT | 連続正解回数 |
+| next_review | DATE | 次回復習日 |
+
+### sessions テーブル
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| token | UUID | セッショントークン |
+| user_id | UUID | ユーザーID |
+| expires_at | TIMESTAMP | 有効期限 |
+
+---
+
+## 📜 ライセンス
+
+MIT License
+
+---
 
 ## 🙏 謝辞
 
-- [Google Gemini API](https://ai.google.dev/) - AI機能
 - [Streamlit](https://streamlit.io/) - Webアプリフレームワーク
-
+- [Google Gemini](https://ai.google.dev/) - AI生成
+- [Supabase](https://supabase.com/) - データベース
+- SM-2 Algorithm - 復習スケジュール
