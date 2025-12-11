@@ -138,6 +138,50 @@ st.markdown("""
         border-radius: 20px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     }
+    
+    /* 文節ブロックのスタイル */
+    .phrase-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 20px 0;
+    }
+    
+    .phrase-block {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s;
+        border: 2px solid transparent;
+    }
+    
+    .phrase-block.unselected {
+        background-color: #e5e7eb;
+        color: #374151;
+    }
+    
+    .phrase-block.unselected:hover {
+        background-color: #d1d5db;
+        border-color: #10b981;
+    }
+    
+    .phrase-block.selected {
+        background-color: #10b981;
+        color: white;
+    }
+    
+    .phrase-block.selected:hover {
+        background-color: #059669;
+    }
+    
+    .phrase-block.punctuation {
+        background-color: transparent;
+        color: #6b7280;
+        cursor: default;
+        padding: 8px 4px;
+    }
 
 </style>
 """, unsafe_allow_html=True)
@@ -243,14 +287,71 @@ def show_main_app():
     user_id = st.session_state.user_id
     username = st.session_state.get("username", "ユーザー")
     
-    # Header with logout
-    header_col1, header_col2 = st.columns([4, 1])
+    # Header with logout and help
+    header_col1, header_col2, header_col3 = st.columns([4, 1, 1])
     with header_col1:
         st.title("🧠 AI 暗記カード")
     with header_col2:
         st.markdown(f"**{username}** さん")
         if st.button("ログアウト"):
             logout()
+    with header_col3:
+        if st.button("❓ ヘルプ"):
+            st.session_state.show_help = True
+    
+    # ヘルプダイアログ
+    if st.session_state.get("show_help", False):
+        with st.expander("📖 ヘルプ", expanded=True):
+            st.markdown("""
+## 🎯 このアプリでできること
+- AIが自動でテキストを文節に分割
+- 穴埋め箇所を自分で選択（またはAIに提案させる）
+- SM-2アルゴリズムによる効率的な復習スケジュール
+
+---
+
+## 📝 カードの作成方法
+
+### ステップ1: テキスト入力
+1. **「カードを追加」タブ** を開く
+2. カテゴリとタイトルを設定
+3. 覚えたいテキストを入力
+4. **「テキストを解析」** をクリック
+
+### ステップ2: 穴埋め箇所を選択
+- AIがテキストを文節に分割
+- **クリックで穴埋め箇所を選択**（緑=選択済み）
+- 「🤖 AIに提案させる」で自動選択も可能
+
+### ステップ3: カード生成
+- **「カード生成」** → プレビュー確認 → **「デッキに保存」**
+
+---
+
+## 🎯 復習のやり方
+1. 問題を見て答えを考える
+2. **「答えを見る」** をクリック
+3. 覚えていた度合いを4段階で評価
+
+| ボタン | 意味 | 次回復習 |
+|--------|------|---------|
+| 忘れた | 完全に忘れていた | 翌日 |
+| 難しい | 思い出すのに苦労 | 数日後 |
+| 普通 | 少し考えて思い出した | 約1週間後 |
+| 簡単 | すぐに思い出せた | 2週間以上後 |
+
+---
+
+## 🔑 APIキー設定
+1. [Google AI Studio](https://aistudio.google.com/) でキーを取得
+2. **「⚙️ APIキー設定」** に貼り付けて保存
+
+### 無料枠制限エラーが出たら
+しばらく待ってから再試行するか、新しいAPIキーを取得してください。
+            """)
+            if st.button("閉じる"):
+                st.session_state.show_help = False
+                st.rerun()
 
     # API Key - ユーザーアカウントから読み込み
     user_api_key = get_api_key(user_id)
@@ -362,38 +463,126 @@ def show_main_app():
     # Add Cards Page
     with tab2:
         st.title("📝 新しいカードを追加")
-        st.markdown("AIを使って、テキストから暗記カードを自動生成します。")
         
         # Category selection
         CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
         selected_category = st.selectbox("カテゴリ", CATEGORIES)
 
-        # Title input (common for all generated cards)
-        card_title = st.text_input("カードのタイトル（共通）", placeholder="例: Python基礎, 歴史年号")
-
-        source_text = st.text_area("テキストを貼り付けてください:", height=400, placeholder="覚えたい記事、ノート、単語リストなどをここに貼り付けてください...")
+        # Title input
+        card_title = st.text_input("カードのタイトル（共通）", placeholder="例: 不法行為, 契約総論")
         
-        # Optional keyword input
-        keywords = st.text_input("重要な用語（オプション）", placeholder="カンマ区切りで入力（例: Python, API, データベース）")
+        # ステップ1: テキスト入力
+        st.subheader("① テキストを入力")
+        source_text = st.text_area(
+            "覚えたいテキストを入力:",
+            height=200,
+            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。"
+        )
         
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            generate_btn = st.button("✨ 生成する", type="primary")
+        # インポート
+        from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection
         
-        if generate_btn:
-            if not api_key:
-                st.error("Gemini APIキーを入力してください。")
-            elif not source_text:
+        # 文節分割ボタン
+        if st.button("📝 テキストを解析", type="primary"):
+            if not source_text:
                 st.warning("テキストを入力してください。")
+            elif not api_key:
+                st.warning("APIキーを設定してください。")
             else:
-                with st.spinner("Geminiがカードを生成中..."):
-                    generated_cards = generate_flashcards(source_text, api_key, keywords)
-                    
-                    if generated_cards:
-                        st.session_state.generated_cards = generated_cards
-                        st.success(f"{len(generated_cards)} 枚のカードを生成しました！")
+                with st.spinner("AIがテキストを解析中..."):
+                    phrases = split_into_phrases(source_text, api_key)
+                    # エラーチェック
+                    if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
+                        st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
+                    elif phrases:
+                        st.session_state.phrases = phrases
+                        st.session_state.selected_indices = []
+                        st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
                     else:
-                        st.error("カードの生成に失敗しました。もう一度試してください。")
+                        st.error("テキストの解析に失敗しました。")
+        
+        # ステップ2: 穴埋め箇所を選択
+        if "phrases" in st.session_state and st.session_state.phrases:
+            st.subheader("② 穴埋め箇所を選択")
+            st.markdown("チェックを入れた箇所が穴埋め（______）になります。")
+            
+            phrases = st.session_state.phrases
+            
+            # AIに提案させるボタン
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if st.button("🤖 AIに提案させる"):
+                    if api_key:
+                        with st.spinner("AIが提案中..."):
+                            suggested = suggest_blanks(phrases, api_key)
+                            # エラーチェック
+                            if isinstance(suggested, dict) and suggested.get("error") == "API_QUOTA_EXCEEDED":
+                                st.error(f"⚠️ {suggested.get('message', 'APIの利用制限に達しました。')}")
+                            else:
+                                st.session_state.selected_indices = suggested
+                                st.rerun()
+                    else:
+                        st.warning("APIキーを設定してください。")
+            
+            # クリック式ブロックで文節を選択
+            import re
+            punctuation_pattern = r'^[。、，．,.\s]+$'
+            
+            # 初期化
+            if "selected_indices" not in st.session_state:
+                st.session_state.selected_indices = []
+            
+            # 選択状態を取得
+            selected = list(st.session_state.selected_indices)
+            
+            # 文節ブロックをボタンで表示
+            st.markdown("クリックして穴埋め箇所を選択（緑=選択済み）:")
+            
+            # 各文節をボタンとして表示
+            cols = st.columns(min(6, max(1, len(phrases))))
+            col_idx = 0
+            for i, phrase in enumerate(phrases):
+                is_punctuation = re.match(punctuation_pattern, phrase)
+                
+                if is_punctuation:
+                    # 句読点は単にテキストとして表示
+                    with cols[col_idx % min(6, len(phrases))]:
+                        st.markdown(f"<span style='color:#9ca3af;'>{phrase}</span>", unsafe_allow_html=True)
+                else:
+                    with cols[col_idx % min(6, len(phrases))]:
+                        is_selected = i in selected
+                        btn_type = "primary" if is_selected else "secondary"
+                        if st.button(phrase, key=f"phrase_btn_{i}", type=btn_type):
+                            if is_selected:
+                                selected.remove(i)
+                            else:
+                                selected.append(i)
+                            st.session_state.selected_indices = selected
+                            st.rerun()
+                col_idx += 1
+            
+            # プレビュー表示
+            if selected:
+                preview_parts = []
+                for i, phrase in enumerate(phrases):
+                    if i in selected:
+                        preview_parts.append("______")
+                    else:
+                        preview_parts.append(phrase)
+                st.markdown("**プレビュー:**")
+                st.info(''.join(preview_parts))
+            
+            # カード生成ボタン
+            if st.button("✨ カード生成", type="primary", key="generate_cards_btn"):
+                if not selected:
+                    st.warning("穴埋め箇所を1つ以上選択してください。")
+                else:
+                    cards = generate_cards_from_selection(phrases, selected)
+                    if cards:
+                        st.session_state.generated_cards = cards
+                        st.success(f"{len(cards)} 枚のカードを生成しました！")
+                    else:
+                        st.error("カードの生成に失敗しました。")
 
         if "generated_cards" in st.session_state:
             st.subheader("プレビュー & 保存")
