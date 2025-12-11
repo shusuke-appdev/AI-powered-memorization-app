@@ -11,8 +11,9 @@ ENV/
 # Streamlit
 .streamlit/secrets.toml
 
-# Data files (optional - comment out if you want to keep data in cloud)
+# Data files (local JSON files - not used in production with Supabase)
 flashcards.json
+data/
 
 # IDE
 .vscode/

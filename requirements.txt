@@ -2,3 +2,5 @@ streamlit
 google-generativeai
 python-dateutil
 typing_extensions
+streamlit-cookies-controller
+supabase

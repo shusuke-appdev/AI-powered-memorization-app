@@ -41,10 +41,16 @@ def generate_flashcards(text, api_key, keywords=None):
             """
         
         prompt = f"""
-        あなたは専門的な教師です。以下のテキストに基づいて、穴埋め式の暗記カードを5つ作成してください。
-        'question' は、重要な用語を '______' に置き換えた文章にしてください。
-        'answer' は、その欠けている重要な用語にしてください。
-        日本語で出力してください。
+        あなたは専門的な教師です。以下のテキストに基づいて、穴埋め式の暗記カードを作成してください。
+
+        【重要な指示】
+        - 原文の文章をそのまま使用してください。要約や言い換えは一切行わないでください。
+        - 原文の中から重要な用語や概念を選び、その部分のみを「______」に置き換えてください。
+        - 1つの文章につき、穴埋めは1箇所のみにしてください。
+        - 'question' は、原文から重要語句を1箇所だけ空欄にした文章です。
+        - 'answer' は、その空欄に入る語句です。
+        - テキスト全体から5つの穴埋め問題を作成してください。
+        
         {keyword_instruction}
         
         テキスト:
@@ -54,7 +60,7 @@ def generate_flashcards(text, api_key, keywords=None):
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.2,
+                temperature=0.1,
                 top_p=0.95,
                 top_k=40,
                 response_mime_type="application/json",
