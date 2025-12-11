@@ -94,6 +94,18 @@ st.markdown("""
         transition: all 0.2s;
     }
     
+    /* Primary button - 緑色 */
+    .stButton button[kind="primary"],
+    .stButton button[data-testid="baseButton-primary"] {
+        background-color: #10b981 !important;
+        color: white !important;
+    }
+    
+    .stButton button[kind="primary"]:hover,
+    .stButton button[data-testid="baseButton-primary"]:hover {
+        background-color: #059669 !important;
+    }
+    
     /* Tab Navigation Styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
@@ -462,7 +474,23 @@ def show_main_app():
 
     # Add Cards Page
     with tab2:
-        st.title("📝 新しいカードを追加")
+        # タイトルとキャンセルボタン
+        title_col, cancel_col = st.columns([4, 1])
+        with title_col:
+            st.title("📝 新しいカードを追加")
+        with cancel_col:
+            # 工程が進んでいる場合のみキャンセルボタンを表示
+            has_progress = "phrases" in st.session_state or "generated_cards" in st.session_state
+            if has_progress:
+                if st.button("🔄 クリア", type="secondary"):
+                    # 全ての関連セッション状態をクリア
+                    if "phrases" in st.session_state:
+                        del st.session_state.phrases
+                    if "selected_indices" in st.session_state:
+                        del st.session_state.selected_indices
+                    if "generated_cards" in st.session_state:
+                        del st.session_state.generated_cards
+                    st.rerun()
         
         # Category selection
         CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
@@ -561,16 +589,37 @@ def show_main_app():
                             st.rerun()
                 col_idx += 1
             
-            # プレビュー表示
+            # プレビュー表示（隣接する選択ブロックは1つの穴埋めとして結合）
             if selected:
+                # 隣接する選択を結合してプレビュー生成
                 preview_parts = []
+                answer_groups = []  # 結合された答えのグループ
+                current_answer_group = []
+                
                 for i, phrase in enumerate(phrases):
                     if i in selected:
-                        preview_parts.append("______")
+                        # 選択されたブロック
+                        if not current_answer_group:
+                            # 新しい穴埋めグループ開始
+                            preview_parts.append("______")
+                        current_answer_group.append(phrase)
                     else:
+                        # 選択されていないブロック
+                        if current_answer_group:
+                            # 穴埋めグループ終了
+                            answer_groups.append("".join(current_answer_group))
+                            current_answer_group = []
                         preview_parts.append(phrase)
+                
+                # 最後のグループを処理
+                if current_answer_group:
+                    answer_groups.append("".join(current_answer_group))
+                
                 st.markdown("**プレビュー:**")
                 st.info(''.join(preview_parts))
+                st.markdown(f"**穴埋め箇所: {len(answer_groups)}個** (隣接ブロックは自動結合)")
+                for idx, ans in enumerate(answer_groups, 1):
+                    st.markdown(f"  {idx}. {ans}")
             
             # カード生成ボタン
             if st.button("✨ カード生成", type="primary", key="generate_cards_btn"):
@@ -608,7 +657,13 @@ def show_main_app():
                                 add_card(user_id, card['question'], card['answer'], title=card_title, category=selected_category)
                                 count += 1
                         st.success(f"{count} 枚のカードを保存しました！")
-                        del st.session_state.generated_cards
+                        # 全ての工程をクリア
+                        if "phrases" in st.session_state:
+                            del st.session_state.phrases
+                        if "selected_indices" in st.session_state:
+                            del st.session_state.selected_indices
+                        if "generated_cards" in st.session_state:
+                            del st.session_state.generated_cards
                         st.rerun()
 
 
@@ -664,10 +719,20 @@ def show_main_app():
                             # Create a unique key for this group
                             group_key = f"{category}_{title}".replace(" ", "_")
                             
-                            # Group header with batch delete button
+                            # 展開状態を管理
+                            expand_key = f"expand_{group_key}"
+                            if expand_key not in st.session_state:
+                                st.session_state[expand_key] = False
+                            
+                            is_expanded = st.session_state[expand_key]
+                            arrow = "▼" if is_expanded else "▶"
+                            
+                            # Group header with expand button and batch delete
                             header_col1, header_col2 = st.columns([4, 1])
                             with header_col1:
-                                expander_open = st.checkbox(f"📚 {title} ({len(cards_in_group)}枚)", key=f"expand_{group_key}")
+                                if st.button(f"{arrow} 📚 {title} ({len(cards_in_group)}枚)", key=f"toggle_{group_key}", type="secondary", use_container_width=True):
+                                    st.session_state[expand_key] = not is_expanded
+                                    st.rerun()
                             with header_col2:
                                 # Batch delete button for the group
                                 if st.button("🗑️ 全削除", key=f"batch_del_{group_key}", type="secondary"):
@@ -689,8 +754,8 @@ def show_main_app():
                                         del st.session_state[f"confirm_batch_del_{group_key}"]
                                         st.rerun()
                             
-                            # Show cards if expander is open
-                            if expander_open:
+                            # Show cards if expanded
+                            if is_expanded:
                                 st.markdown("---")
                                 for j, card in enumerate(cards_in_group):
                                     st.markdown(f"**カード {j+1}**: {card['question'][:50]}...")

@@ -26,19 +26,25 @@ def split_into_phrases(text, api_key):
         
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"""以下のテキストを、日本語の文節（意味のある最小単位）に分割してください。
+        prompt = f"""以下のテキストを、暗記カード用の意味のまとまりに分割してください。
 
-【ルール】
-1. 助詞や助動詞は前の語と一緒にする（例: 「民法は」「規定している」）
-2. 専門用語や固有名詞は1つの単位として保持する
-3. 句読点（。、，．,.）は単独の文節として分割する
-4. 分割した文節をJSON配列で返す
+【文法的ルール】
+1. 形容詞・連体詞は修飾する名詞と同じブロックにする（例: 「重大な過失」「不法な行為」）
+2. 副詞は修飾する動詞・形容詞と同じブロックにする
+3. 助詞（は、が、を、に、で等）は直前の語と同じブロックにする
+4. 専門用語・固有名詞・法律用語は1つのブロックとして保持する
+5. 句読点（。、）の前後は必ずブロックを分ける（句読点は独立したブロック）
+6. 1文を2〜4個程度のブロックに分割する
+
+【例】
+入力: 「重大な過失による不法行為は、損害賠償の対象となる。」
+出力: ["重大な過失による", "不法行為は", "、", "損害賠償の対象となる", "。"]
 
 【テキスト】
 {text}
 
 【出力形式】
-{{"phrases": ["文節1", "文節2", "。", ...]}}"""
+{{"phrases": ["ブロック1", "ブロック2", "。", ...]}}"""
         
         response = model.generate_content(
             prompt,
@@ -134,9 +140,50 @@ def suggest_blanks(phrases, api_key):
 
 # ============ カード生成 ============
 
+def merge_adjacent_selections(phrases, selected_indices):
+    """
+    隣接する選択インデックスをグループ化
+    
+    Returns:
+        list of lists: 隣接するインデックスのグループ [[0,1,2], [5,6], ...]
+    """
+    if not selected_indices:
+        return []
+    
+    sorted_indices = sorted(selected_indices)
+    groups = []
+    current_group = [sorted_indices[0]]
+    
+    for i in range(1, len(sorted_indices)):
+        # 隣接しているか、間に句読点のみがあるかチェック
+        prev_idx = sorted_indices[i-1]
+        curr_idx = sorted_indices[i]
+        
+        # 間にあるフレーズをチェック
+        is_adjacent = True
+        for j in range(prev_idx + 1, curr_idx):
+            # 句読点以外があれば隣接とみなさない
+            if not phrases[j].strip() in ['。', '、', '，', '．', ',', '.', '']:
+                is_adjacent = False
+                break
+        
+        if is_adjacent and curr_idx == prev_idx + 1:
+            # 完全に隣接
+            current_group.append(curr_idx)
+        elif is_adjacent:
+            # 間に句読点のみ
+            current_group.append(curr_idx)
+        else:
+            # 隣接していない
+            groups.append(current_group)
+            current_group = [curr_idx]
+    
+    groups.append(current_group)
+    return groups
+
 def generate_cards_from_selection(phrases, selected_indices):
     """
-    選択された文節を穴埋めにしてカードを生成
+    選択された文節を穴埋めにしてカードを生成（隣接ブロックは結合）
     
     Args:
         phrases (list): 文節のリスト
@@ -148,27 +195,50 @@ def generate_cards_from_selection(phrases, selected_indices):
     if not selected_indices:
         return []
     
+    # 隣接する選択をグループ化
+    groups = merge_adjacent_selections(phrases, selected_indices)
+    num_blanks = len(groups)  # 結合後の穴埋め箇所数
+    
     cards = []
-    num_blanks = len(selected_indices)
+    
+    def build_card_from_groups(target_groups):
+        """指定されたグループを穴埋めにしてカードを作成"""
+        question_parts = []
+        answers = []
+        all_target_indices = set()
+        for g in target_groups:
+            all_target_indices.update(g)
+        
+        current_answer = []
+        in_blank = False
+        
+        for i, phrase in enumerate(phrases):
+            if i in all_target_indices:
+                if not in_blank:
+                    question_parts.append('______')
+                    in_blank = True
+                current_answer.append(phrase)
+            else:
+                if in_blank and current_answer:
+                    answers.append(''.join(current_answer))
+                    current_answer = []
+                    in_blank = False
+                question_parts.append(phrase)
+        
+        if current_answer:
+            answers.append(''.join(current_answer))
+        
+        return {
+            "question": ''.join(question_parts),
+            "answer": " / ".join(answers)
+        }
     
     if num_blanks <= 2:
         # 2箇所以下: 1枚のカード
-        question_parts = []
-        answers = []
-        for i, phrase in enumerate(phrases):
-            if i in selected_indices:
-                question_parts.append('______')
-                answers.append(phrase)
-            else:
-                question_parts.append(phrase)
-        
-        cards.append({
-            "question": ''.join(question_parts),
-            "answer": " / ".join(answers)
-        })
+        cards.append(build_card_from_groups(groups))
     else:
         # 3箇所以上: 組み合わせから選択
-        all_combos = list(combinations(selected_indices, min(3, num_blanks)))
+        all_combos = list(combinations(range(len(groups)), min(3, num_blanks)))
         
         selected_combos = []
         covered = set()
@@ -178,7 +248,7 @@ def generate_cards_from_selection(phrases, selected_indices):
         
         # 全ての穴埋め箇所をカバー
         for combo in shuffled_combos:
-            if covered == set(selected_indices):
+            if covered == set(range(num_blanks)):
                 break
             new_coverage = set(combo) - covered
             if new_coverage:
@@ -188,8 +258,8 @@ def generate_cards_from_selection(phrases, selected_indices):
                 break
         
         # 未カバーがあれば追加
-        while covered != set(selected_indices) and len(selected_combos) < 10:
-            uncovered = set(selected_indices) - covered
+        while covered != set(range(num_blanks)) and len(selected_combos) < 10:
+            uncovered = set(range(num_blanks)) - covered
             for combo in shuffled_combos:
                 if any(i in uncovered for i in combo):
                     if combo not in selected_combos:
@@ -206,19 +276,8 @@ def generate_cards_from_selection(phrases, selected_indices):
         
         # カード生成
         for combo in selected_combos:
-            question_parts = []
-            answers = []
-            for i, phrase in enumerate(phrases):
-                if i in combo:
-                    question_parts.append('______')
-                    answers.append(phrase)
-                else:
-                    question_parts.append(phrase)
-            
-            cards.append({
-                "question": ''.join(question_parts),
-                "answer": " / ".join(answers)
-            })
+            target_groups = [groups[i] for i in combo]
+            cards.append(build_card_from_groups(target_groups))
     
     return cards
 
