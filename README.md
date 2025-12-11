@@ -1,39 +1,17 @@
-# 🧠 AI 暗記カード
+# AI 暗記カード
 
-AIを活用した穴埋め式フラッシュカードアプリ。Geminiが自動でテキストから暗記カードを生成し、SM-2アルゴリズムで効率的な復習スケジュールを管理します。
+AIを活用した穴埋め式フラッシュカードアプリ。Gemini APIでカードを自動生成し、SM-2アルゴリズムで効率的な復習スケジュールを管理します。
 
-## ✨ 機能
+## 機能
 
-### 📝 カード生成
-- テキストを貼り付けるだけでAIが自動で穴埋め問題を生成
-- 原文を維持したまま、重要語句のみを空欄化
-- キーワード指定で特定の用語をターゲットにした問題作成
-
-### 📚 復習システム
-- **SM-2アルゴリズム**による科学的な復習スケジュール
-- 4段階評価（忘れた/難しい/普通/簡単）で次回復習日を自動計算
-- 今日の復習カードを優先表示
-
-### 👥 マルチユーザー対応
-- ユーザー登録・ログイン機能
-- 各ユーザーの独立したカードデータベース
-- 自動ログイン（30日間セッション保持）
-- ユーザー別APIキー管理
-
-### ☁️ クラウドデータ永続化
-- **Supabase**（PostgreSQL）によるデータ保存
-- アプリ再起動後もデータが維持
-- 複数デバイスからアクセス可能
+- **AI穴埋め生成** - テキストを貼り付けるだけでAIが自動で穴埋め問題を生成
+- **SM-2復習システム** - 科学的な復習スケジュールで効率的に暗記
+- **マルチユーザー対応** - ユーザー登録・ログイン、自動ログイン（30日間）
+- **クラウド保存** - Supabase（PostgreSQL）によるデータ永続化
 
 ---
 
-## 🚀 デプロイ済みアプリ
-
-[アプリを開く](https://your-app-name.streamlit.app)
-
----
-
-## 🛠️ ローカル開発
+## ローカル開発
 
 ### 必要条件
 - Python 3.9+
@@ -42,44 +20,24 @@ AIを活用した穴埋め式フラッシュカードアプリ。Geminiが自動
 
 ### セットアップ
 
-1. **リポジトリをクローン**
 ```bash
-git clone https://github.com/your-username/memorization_app.git
-cd memorization_app
-```
-
-2. **依存関係をインストール**
-```bash
+# 依存関係をインストール
 pip install -r requirements.txt
-```
 
-3. **環境変数を設定**
-```bash
-# PowerShell
+# 環境変数を設定（PowerShell）
 $env:SUPABASE_URL = "https://xxx.supabase.co"
 $env:SUPABASE_KEY = "eyJ..."
-```
 
-4. **アプリを起動**
-```bash
+# アプリを起動
 streamlit run app.py
 ```
 
 ---
 
-## ☁️ Streamlit Cloud へのデプロイ
+## Streamlit Cloud へのデプロイ
 
-### 1. GitHubにプッシュ
-```bash
-git add .
-git commit -m "Deploy app"
-git push
-```
-
-### 2. Streamlit Cloud で設定
-
-1. [share.streamlit.io](https://share.streamlit.io) にログイン
-2. 「New app」→ リポジトリを選択
+1. GitHubにプッシュ
+2. [share.streamlit.io](https://share.streamlit.io) でリポジトリを選択
 3. **Settings** → **Secrets** に以下を追加:
 
 ```toml
@@ -89,7 +47,7 @@ SUPABASE_KEY = "eyJ..."
 
 ---
 
-## 📁 ファイル構成
+## ファイル構成
 
 ```
 memorization_app/
@@ -105,7 +63,7 @@ memorization_app/
 
 ---
 
-## 🗄️ データベース構造（Supabase）
+## データベース構造（Supabase）
 
 ### users テーブル
 | カラム | 型 | 説明 |
@@ -139,13 +97,13 @@ memorization_app/
 
 ---
 
-## 📜 ライセンス
+## ライセンス
 
 MIT License
 
 ---
 
-## 🙏 謝辞
+## 謝辞
 
 - [Streamlit](https://streamlit.io/) - Webアプリフレームワーク
 - [Google Gemini](https://ai.google.dev/) - AI生成
