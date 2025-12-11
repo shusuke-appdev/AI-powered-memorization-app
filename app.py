@@ -474,13 +474,21 @@ def show_main_app():
 
     # Add Cards Page
     with tab2:
+        # 入力フィールドのセッションステート初期化
+        if "add_card_category" not in st.session_state:
+            st.session_state.add_card_category = ""
+        if "add_card_title" not in st.session_state:
+            st.session_state.add_card_title = ""
+        if "add_card_text" not in st.session_state:
+            st.session_state.add_card_text = ""
+        
         # タイトルとキャンセルボタン
         title_col, cancel_col = st.columns([4, 1])
         with title_col:
             st.title("📝 新しいカードを追加")
         with cancel_col:
             # 工程が進んでいる場合のみキャンセルボタンを表示
-            has_progress = "phrases" in st.session_state or "generated_cards" in st.session_state
+            has_progress = "phrases" in st.session_state or "generated_cards" in st.session_state or st.session_state.add_card_text
             if has_progress:
                 if st.button("🔄 クリア", type="secondary"):
                     # 全ての関連セッション状態をクリア
@@ -490,22 +498,36 @@ def show_main_app():
                         del st.session_state.selected_indices
                     if "generated_cards" in st.session_state:
                         del st.session_state.generated_cards
+                    # 入力フィールドもクリア
+                    st.session_state.add_card_category = ""
+                    st.session_state.add_card_title = ""
+                    st.session_state.add_card_text = ""
                     st.rerun()
         
         # Category selection
         CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
-        selected_category = st.selectbox("カテゴリ", CATEGORIES)
+        CATEGORIES_WITH_PLACEHOLDER = ["-- カテゴリを選択 --"] + CATEGORIES
+        current_idx = 0
+        if st.session_state.add_card_category and st.session_state.add_card_category in CATEGORIES:
+            current_idx = CATEGORIES_WITH_PLACEHOLDER.index(st.session_state.add_card_category)
+        selected_category_raw = st.selectbox("カテゴリ", CATEGORIES_WITH_PLACEHOLDER, index=current_idx, key="category_select")
+        selected_category = selected_category_raw if selected_category_raw != "-- カテゴリを選択 --" else ""
+        st.session_state.add_card_category = selected_category
 
         # Title input
-        card_title = st.text_input("カードのタイトル（共通）", placeholder="例: 不法行為, 契約総論")
+        card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key="title_input")
+        st.session_state.add_card_title = card_title
         
         # ステップ1: テキスト入力
         st.subheader("① テキストを入力")
         source_text = st.text_area(
             "覚えたいテキストを入力:",
+            value=st.session_state.add_card_text,
             height=200,
-            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。"
+            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
+            key="text_input"
         )
+        st.session_state.add_card_text = source_text
         
         # インポート
         from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection
@@ -664,6 +686,10 @@ def show_main_app():
                             del st.session_state.selected_indices
                         if "generated_cards" in st.session_state:
                             del st.session_state.generated_cards
+                        # 入力フィールドもクリア
+                        st.session_state.add_card_category = ""
+                        st.session_state.add_card_title = ""
+                        st.session_state.add_card_text = ""
                         st.rerun()
 
 
