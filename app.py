@@ -300,15 +300,16 @@ def show_main_app():
     username = st.session_state.get("username", "ユーザー")
     
     # Header with logout and help
-    header_col1, header_col2, header_col3 = st.columns([4, 1, 1])
+    header_col1, header_col2, header_col3 = st.columns([3, 2, 1])
     with header_col1:
         st.title("🧠 AI 暗記カード")
     with header_col2:
+        st.markdown("")  # スペーサー
         st.markdown(f"**{username}** さん")
-        if st.button("ログアウト"):
-            logout()
     with header_col3:
-        if st.button("❓ ヘルプ"):
+        if st.button("ログアウト", use_container_width=True):
+            logout()
+        if st.button("❓ ヘルプ", use_container_width=True):
             st.session_state.show_help = True
     
     # ヘルプダイアログ
@@ -615,14 +616,15 @@ def show_main_app():
             st.session_state.widget_key_counter = 0
         
         # タイトルとキャンセルボタン
-        title_col, cancel_col = st.columns([4, 1])
+        title_col, cancel_col = st.columns([3, 1])
         with title_col:
             st.title("📝 新しいカードを追加")
         with cancel_col:
+            st.markdown("")  # スペーサー
             # 工程が進んでいる場合のみキャンセルボタンを表示
             has_progress = "phrases" in st.session_state or "generated_cards" in st.session_state or st.session_state.add_card_text
             if has_progress:
-                if st.button("🔄 クリア", type="secondary"):
+                if st.button("🔄 クリア", type="secondary", use_container_width=True):
                     # 全ての関連セッション状態をクリア
                     if "phrases" in st.session_state:
                         del st.session_state.phrases
