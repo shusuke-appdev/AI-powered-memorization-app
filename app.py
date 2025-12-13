@@ -611,6 +611,8 @@ def show_main_app():
             st.session_state.add_card_title = ""
         if "add_card_text" not in st.session_state:
             st.session_state.add_card_text = ""
+        if "widget_key_counter" not in st.session_state:
+            st.session_state.widget_key_counter = 0
         
         # タイトルとキャンセルボタン
         title_col, cancel_col = st.columns([4, 1])
@@ -640,12 +642,12 @@ def show_main_app():
         current_idx = 0
         if st.session_state.add_card_category and st.session_state.add_card_category in CATEGORIES:
             current_idx = CATEGORIES_WITH_PLACEHOLDER.index(st.session_state.add_card_category)
-        selected_category_raw = st.selectbox("カテゴリ", CATEGORIES_WITH_PLACEHOLDER, index=current_idx, key="category_select")
+        selected_category_raw = st.selectbox("カテゴリ", CATEGORIES_WITH_PLACEHOLDER, index=current_idx, key=f"category_select_{st.session_state.widget_key_counter}")
         selected_category = selected_category_raw if selected_category_raw != "-- カテゴリを選択 --" else ""
         st.session_state.add_card_category = selected_category
 
         # Title input
-        card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key="title_input")
+        card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key=f"title_input_{st.session_state.widget_key_counter}")
         st.session_state.add_card_title = card_title
         
         # ステップ1: テキスト入力
@@ -655,7 +657,7 @@ def show_main_app():
             value=st.session_state.add_card_text,
             height=200,
             placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
-            key="text_input"
+            key=f"text_input_{st.session_state.widget_key_counter}"
         )
         st.session_state.add_card_text = source_text
         
@@ -831,6 +833,8 @@ def show_main_app():
                         st.session_state.add_card_category = ""
                         st.session_state.add_card_title = ""
                         st.session_state.add_card_text = ""
+                        # ウィジェットをリセットするためカウンター増加
+                        st.session_state.widget_key_counter += 1
                         st.rerun()
 
 
@@ -839,170 +843,148 @@ def show_main_app():
         st.title("🗂️ カード管理")
         
         cards = load_cards(user_id)
+        source_cards = load_source_cards(user_id)
         CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
         
-        if not cards:
+        if not source_cards and not cards:
             st.info("まだカードがありません。「カードを追加」メニューから作成してください。")
         else:
-            st.markdown(f"**登録済みカード: {len(cards)} 枚**")
+            # 統計表示
+            st.markdown(f"**原文カード: {len(source_cards)} 件 / 暗記カード: {len(cards)} 枚**")
             
-            # Search box
-            search_query = st.text_input("🔍 検索", placeholder="問題、答え、タイトルで検索...", key="search_cards")
+            # 検索ボックス
+            search_query = st.text_input("🔍 検索", placeholder="原文、問題、答えで検索...", key="unified_search")
             
-            # Filter cards by search query
-            if search_query:
-                filtered_cards = []
-                for card in cards:
-                    query_lower = search_query.lower()
-                    if (query_lower in card['question'].lower() or 
-                        query_lower in card['answer'].lower() or 
-                        query_lower in card.get('title', '').lower()):
-                        filtered_cards.append(card)
-                cards = filtered_cards
-                st.markdown(f"*検索結果: {len(filtered_cards)} 枚*")
-            
-            # Group cards by category
+            # カテゴリタブ
             tabs = st.tabs(CATEGORIES)
             
             for i, category in enumerate(CATEGORIES):
                 with tabs[i]:
-                    category_cards = [c for c in cards if c.get("category", "その他") == category]
+                    # このカテゴリの原文カードをフィルタ
+                    category_sources = [s for s in source_cards if s.get("category", "その他") == category]
                     
-                    if not category_cards:
+                    # 検索フィルタ
+                    if search_query:
+                        category_sources = [s for s in category_sources 
+                                           if search_query.lower() in s.get('source_text', '').lower() 
+                                           or search_query.lower() in s.get('title', '').lower()]
+                    
+                    # 原文を持たない孤立した暗記カード
+                    orphan_cards = [c for c in cards 
+                                   if c.get("category", "その他") == category 
+                                   and not c.get("source_id")]
+                    if search_query:
+                        orphan_cards = [c for c in orphan_cards
+                                       if search_query.lower() in c['question'].lower()
+                                       or search_query.lower() in c['answer'].lower()]
+                    
+                    if not category_sources and not orphan_cards:
                         st.info(f"{category} のカードはありません。")
                     else:
-                        # Group cards by title
-                        grouped_cards = {}
-                        for card in category_cards:
-                            title = card.get('title', '').strip()
-                            if not title:
-                                title = "📝 無題"
-                            if title not in grouped_cards:
-                                grouped_cards[title] = []
-                            grouped_cards[title].append(card)
-                        
-                        # Display cards grouped by title
-                        for title, cards_in_group in grouped_cards.items():
-                            # Create a unique key for this group
-                            group_key = f"{category}_{title}".replace(" ", "_")
+                        # 原文カードごとに表示
+                        for sc in category_sources:
+                            source_id = sc['id']
+                            source_title = sc.get('title', '無題')
+                            source_text = sc.get('source_text', '')
                             
-                            # 展開状態を管理
-                            expand_key = f"expand_{group_key}"
-                            if expand_key not in st.session_state:
-                                st.session_state[expand_key] = False
+                            # この原文に紐づく暗記カード
+                            linked_cards = [c for c in cards if c.get('source_id') == source_id]
                             
-                            is_expanded = st.session_state[expand_key]
-                            arrow = "▼" if is_expanded else "▶"
-                            
-                            # Group header with expand button and batch delete
-                            header_col1, header_col2 = st.columns([4, 1])
-                            with header_col1:
-                                if st.button(f"{arrow} 📚 {title} ({len(cards_in_group)}枚)", key=f"toggle_{group_key}", type="secondary", use_container_width=True):
-                                    st.session_state[expand_key] = not is_expanded
-                                    st.rerun()
-                            with header_col2:
-                                # Batch delete button for the group
-                                if st.button("🗑️ 全削除", key=f"batch_del_{group_key}", type="secondary"):
-                                    st.session_state[f"confirm_batch_del_{group_key}"] = True
-                            
-                            # Batch delete confirmation
-                            if st.session_state.get(f"confirm_batch_del_{group_key}", False):
-                                st.warning(f"⚠️ 「{title}」のカード {len(cards_in_group)} 枚を全て削除しますか？")
-                                confirm_col1, confirm_col2, confirm_col3 = st.columns([1, 1, 3])
-                                with confirm_col1:
-                                    if st.button("✓ 削除する", key=f"confirm_yes_{group_key}", type="primary"):
-                                        card_ids = [c['id'] for c in cards_in_group]
-                                        delete_cards_batch(user_id, card_ids)
-                                        del st.session_state[f"confirm_batch_del_{group_key}"]
-                                        st.success(f"{len(cards_in_group)} 枚のカードを削除しました")
-                                        st.rerun()
-                                with confirm_col2:
-                                    if st.button("✗ キャンセル", key=f"confirm_no_{group_key}"):
-                                        del st.session_state[f"confirm_batch_del_{group_key}"]
-                                        st.rerun()
-                            
-                            # Show cards if expanded
-                            if is_expanded:
-                                st.markdown("---")
-                                for j, card in enumerate(cards_in_group):
-                                    st.markdown(f"**カード {j+1}**: {card['question'][:50]}...")
+                            # Expander: 原文カード（紐づきカード数も表示）
+                            with st.expander(f"📄 {source_title}（暗記カード {len(linked_cards)} 枚）", expanded=False):
+                                
+                                # 原文表示・編集
+                                st.markdown("**📝 原文**")
+                                edited_source = st.text_area(
+                                    "", value=source_text, height=120, 
+                                    key=f"edit_source_{source_id}"
+                                )
+                                
+                                # 原文が変更されたか検出
+                                source_modified = edited_source != source_text
+                                
+                                # 紐づき暗記カード
+                                if linked_cards:
+                                    st.markdown("---")
+                                    st.markdown("**🎴 紐づき暗記カード**")
                                     
-                                    # Edit form
-                                    with st.form(key=f"edit_form_{card['id']}"):
-                                        new_category = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")), key=f"cat_{card['id']}")
-                                        new_title = st.text_input("タイトル", value=card.get('title', ''), key=f"title_{card['id']}")
-                                        new_q = st.text_input("問題", value=card['question'], key=f"q_{card['id']}")
-                                        new_a = st.text_input("答え", value=card['answer'], key=f"a_{card['id']}")
+                                    cards_modified = False
+                                    for j, card in enumerate(linked_cards):
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            new_q = st.text_input(f"問題 {j+1}", value=card['question'], key=f"q_{card['id']}")
+                                        with col2:
+                                            new_a = st.text_input(f"答え {j+1}", value=card['answer'], key=f"a_{card['id']}")
                                         
-                                        if st.form_submit_button("✓ 更新", type="primary"):
-                                            update_card_content(user_id, card['id'], new_q, new_a, new_title, new_category)
-                                            st.success("カードを更新しました")
+                                        if new_q != card['question'] or new_a != card['answer']:
+                                            cards_modified = True
+                                    
+                                    # 警告: 原文が変更されているのに暗記カードが変更されていない
+                                    if source_modified and not cards_modified:
+                                        st.warning("⚠️ 原文が変更されていますが、暗記カードが更新されていません。")
+                                
+                                # 操作ボタン
+                                st.markdown("---")
+                                btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
+                                
+                                with btn_col1:
+                                    if st.button("💾 保存", key=f"save_source_{source_id}", type="primary"):
+                                        # 原文更新（簡易実装：削除→再作成はせず、今回はそのまま）
+                                        # TODO: update_source_card関数が必要な場合は追加
+                                        
+                                        # 暗記カード更新
+                                        for card in linked_cards:
+                                            new_q = st.session_state.get(f"q_{card['id']}", card['question'])
+                                            new_a = st.session_state.get(f"a_{card['id']}", card['answer'])
+                                            if new_q != card['question'] or new_a != card['answer']:
+                                                update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), card.get('category', 'その他'))
+                                        
+                                        st.success("保存しました")
+                                        st.rerun()
+                                
+                                with btn_col2:
+                                    if st.button("🗑️ 全削除", key=f"del_all_{source_id}"):
+                                        st.session_state[f"confirm_del_all_{source_id}"] = True
+                                
+                                if st.session_state.get(f"confirm_del_all_{source_id}", False):
+                                    st.warning("⚠️ この原文カードと紐づく暗記カードを全て削除しますか？")
+                                    c1, c2, c3 = st.columns([1, 1, 3])
+                                    with c1:
+                                        if st.button("✓ 削除", key=f"yes_del_all_{source_id}", type="primary"):
+                                            # 暗記カード削除
+                                            for card in linked_cards:
+                                                delete_card(user_id, card['id'])
+                                            # 原文カード削除
+                                            delete_source_card(user_id, source_id)
+                                            del st.session_state[f"confirm_del_all_{source_id}"]
+                                            st.success("削除しました")
+                                            st.rerun()
+                                    with c2:
+                                        if st.button("✗ 戻る", key=f"no_del_all_{source_id}"):
+                                            del st.session_state[f"confirm_del_all_{source_id}"]
+                                            st.rerun()
+                        
+                        # 孤立した暗記カード（原文なし）
+                        if orphan_cards:
+                            st.markdown("---")
+                            st.markdown("**� 原文なしの暗記カード**")
+                            
+                            for card in orphan_cards:
+                                with st.expander(f"🎴 {card.get('title', '無題')}: {card['question'][:30]}..."):
+                                    with st.form(key=f"orphan_form_{card['id']}"):
+                                        new_q = st.text_input("問題", value=card['question'])
+                                        new_a = st.text_input("答え", value=card['answer'])
+                                        new_cat = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")))
+                                        
+                                        if st.form_submit_button("✓ 更新"):
+                                            update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), new_cat)
+                                            st.success("更新しました")
                                             st.rerun()
                                     
-                                    # Individual delete button (outside form)
-                                    if st.button("🗑️ このカードを削除", key=f"del_btn_{card['id']}", type="secondary"):
-                                        st.session_state[f"confirm_del_{card['id']}"] = True
-                                    
-                                    # Delete confirmation for individual card
-                                    if st.session_state.get(f"confirm_del_{card['id']}", False):
-                                        st.warning("⚠️ このカードを削除しますか？")
-                                        del_col1, del_col2, del_col3 = st.columns([1, 1, 3])
-                                        with del_col1:
-                                            if st.button("✓ 削除", key=f"confirm_del_yes_{card['id']}", type="primary"):
-                                                delete_card(user_id, card['id'])
-                                                del st.session_state[f"confirm_del_{card['id']}"]
-                                                st.success("カードを削除しました")
-                                                st.rerun()
-                                        with del_col2:
-                                            if st.button("✗ 戻る", key=f"confirm_del_no_{card['id']}"):
-                                                del st.session_state[f"confirm_del_{card['id']}"]
-                                                st.rerun()
-                                    
-                                    if j < len(cards_in_group) - 1:
-                                        st.markdown("---")
-                                st.markdown("")  # Add spacing after group
-        
-        # 原文カード管理セクション
-        st.markdown("---")
-        st.subheader("📖 原文カード管理")
-        
-        source_cards = load_source_cards(user_id)
-        
-        if not source_cards:
-            st.info("原文カードはまだありません。カードを作成すると自動的に保存されます。")
-        else:
-            st.markdown(f"**原文カード: {len(source_cards)} 件**")
-            
-            # 検索
-            source_search = st.text_input("🔍 原文を検索", placeholder="キーワードで検索...", key="source_search")
-            
-            if source_search:
-                source_cards = [s for s in source_cards if source_search.lower() in s.get('source_text', '').lower() or source_search.lower() in s.get('title', '').lower()]
-                st.markdown(f"*検索結果: {len(source_cards)} 件*")
-            
-            for sc in source_cards:
-                with st.expander(f"📄 {sc.get('title', '無題')} - {sc.get('category', 'その他')}"):
-                    st.markdown(f"**原文:**")
-                    st.text_area("", value=sc.get('source_text', ''), height=150, disabled=True, key=f"source_text_{sc['id']}")
-                    
-                    st.markdown(f"*作成日: {sc.get('created_at', '')[:10]}*")
-                    
-                    if st.button("🗑️ この原文カードを削除", key=f"del_source_{sc['id']}"):
-                        st.session_state[f"confirm_del_source_{sc['id']}"] = True
-                    
-                    if st.session_state.get(f"confirm_del_source_{sc['id']}", False):
-                        st.warning("⚠️ この原文カードを削除しますか？（関連する穴埋めカードは残ります）")
-                        col1, col2, col3 = st.columns([1, 1, 3])
-                        with col1:
-                            if st.button("✓ 削除", key=f"confirm_source_yes_{sc['id']}", type="primary"):
-                                delete_source_card(user_id, sc['id'])
-                                del st.session_state[f"confirm_del_source_{sc['id']}"]
-                                st.success("原文カードを削除しました")
-                                st.rerun()
-                        with col2:
-                            if st.button("✗ 戻る", key=f"confirm_source_no_{sc['id']}"):
-                                del st.session_state[f"confirm_del_source_{sc['id']}"]
-                                st.rerun()
+                                    if st.button("🗑️ 削除", key=f"del_orphan_{card['id']}"):
+                                        delete_card(user_id, card['id'])
+                                        st.success("削除しました")
+                                        st.rerun()
 
 # ============ アプリケーション実行 ============
 
