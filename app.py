@@ -2,9 +2,9 @@
 import datetime
 import os
 from gemini_client import generate_flashcards
-from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch
-from utils import calculate_next_review
-from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key
+from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card
+from utils import calculate_next_review, select_hybrid_quota
+from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key, get_daily_quota_limit, update_daily_quota_limit
 from streamlit_cookies_controller import CookieController
 
 # Page Config
@@ -316,9 +316,26 @@ def show_main_app():
         with st.expander("📖 ヘルプ", expanded=True):
             st.markdown("""
 ## 🎯 このアプリでできること
-- AIが自動でテキストを文節に分割
-- 穴埋め箇所を自分で選択（またはAIに提案させる）
-- SM-2アルゴリズムによる効率的な復習スケジュール
+- 覚えたいテキストから**穴埋め式の暗記カード**を作成
+- **AI**がテキストを分析して、穴埋め箇所を提案
+- 科学的な復習スケジュール（**SM-2アルゴリズム**）で効率的に暗記
+- **本日のノルマ機能**で1日の学習量を管理
+- **原文カード**で復習後に元のテキストを確認可能
+
+---
+
+## 📊 ノルマ設定
+
+1日に復習するカードの上限を設定できます。
+
+1. **「📊 ノルマ設定」**を開く
+2. 上限枚数を設定（デフォルト: 15枚）
+3. 数値を変更すると自動保存
+
+> **ハイブリッド最適化**: ノルマ内のカード選択は自動的に最適化されます：
+> - 半分は「苦手なカード」（忘れやすいもの）を優先
+> - 半分は「期限が古いカード」を優先
+> - 同じ原文のカードは1日1枚まで（重複防止）
 
 ---
 
@@ -337,13 +354,15 @@ def show_main_app():
 
 ### ステップ3: カード生成
 - **「カード生成」** → プレビュー確認 → **「デッキに保存」**
+- **原文も自動保存**: カード保存時に、元のテキスト（原文）も自動的に保存されます
 
 ---
 
-## 🎯 復習のやり方
-1. 問題を見て答えを考える
-2. **「答えを見る」** をクリック
-3. 覚えていた度合いを4段階で評価
+## 🎯 復習のやり方（本日のノルマ）
+1. **「📚 復習する」**タブ（タイトル:「本日のノルマ」）
+2. 問題を見て答えを考える
+3. **「答えを見る」** をクリック
+4. 覚えていた度合いを4段階で評価
 
 | ボタン | 意味 | 次回復習 |
 |--------|------|---------|
@@ -351,6 +370,30 @@ def show_main_app():
 | 難しい | 思い出すのに苦労 | 数日後 |
 | 普通 | 少し考えて思い出した | 約1週間後 |
 | 簡単 | すぐに思い出せた | 2週間以上後 |
+
+---
+
+## 📖 ノルマ復習（原文確認）
+
+本日のノルマを完了すると、**原文確認モード**が表示されます。
+
+1. ノルマ完了後、**「📖 ノルマ復習（原文確認）」**セクションが表示
+2. 今日復習したカードの**原文テキスト**を順番に確認
+3. **「◀ 前へ」「次へ ▶」**で移動
+4. 確認が終わったら**「✓ 復習を終了」**
+
+> **目的**: 穴埋めで学んだ内容を、原文全体の文脈で再確認することで定着率アップ！
+
+---
+
+## 🗂️ カードを管理する
+
+1. **「🗂️ カード管理」**タブをクリック
+2. カテゴリタブで絞り込み
+3. 🔍 検索ボックスでキーワード検索
+4. 各カードの「問題」「答え」「カテゴリ」を編集 → **「更新」**で保存
+5. 不要なカードは**「🗑️ このカードを削除」**で削除
+6. タイトル単位で一括削除も可能（**「🗑️ 全削除」**）
 
 ---
 
@@ -394,32 +437,111 @@ def show_main_app():
     # 使用するAPIキー
     api_key = user_api_key
 
+    # ノルマ上限設定セクション
+    with st.expander("📊 ノルマ設定"):
+        current_quota = get_daily_quota_limit(user_id)
+        new_quota = st.number_input(
+            "1日のノルマ上限（枚）",
+            min_value=1,
+            max_value=100,
+            value=current_quota,
+            step=1,
+            help="1日に復習するカードの最大枚数"
+        )
+        if new_quota != current_quota:
+            update_daily_quota_limit(user_id, new_quota)
+            st.success(f"ノルマ上限を {new_quota} 枚に設定しました")
+            st.rerun()
+
     st.markdown("---")
 
     # Tab Navigation
-    tab1, tab2, tab3 = st.tabs(["📚 復習する", "📝 カードを追加", "🗂️ カード管理"])
+    tab1, tab2, tab3 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🗂️ カード管理"])
 
     # Review Page
     with tab1:
-        st.title("復習セッション")
+        st.title("本日のノルマ")
         
         cards = load_cards(user_id)
         today = datetime.date.today().isoformat()
+        daily_limit = get_daily_quota_limit(user_id)
         
         # Filter cards due for review
-        due_cards = [c for c in cards if c['next_review'] <= today]
+        all_due_cards = [c for c in cards if c['next_review'] <= today]
+        
+        # Apply hybrid quota selection algorithm
+        due_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
         
         if not due_cards:
             st.markdown("""
             <div style="text-align: center; padding: 50px;">
-                <h2>🎉 復習完了！</h2>
-                <p style="color: #6b7280;">今日復習すべきカードはすべて終わりました。お疲れ様でした！</p>
+                <h2>🎉 本日のノルマ完了！</h2>
+                <p style="color: #6b7280;">今日のノルマは終了しました。お疲れ様でした！</p>
             </div>
             """, unsafe_allow_html=True)
             st.metric("デッキのカード総数", len(cards))
+            if len(all_due_cards) > daily_limit:
+                st.info(f"💡 残り {len(all_due_cards) - daily_limit} 枚のカードが復習待ちです（明日以降）")
+            
+            # ノルマ復習モード（原文カードレビュー）
+            reviewed_source_ids = st.session_state.get("reviewed_source_ids", [])
+            if reviewed_source_ids:
+                st.markdown("---")
+                st.subheader("📖 ノルマ復習（原文確認）")
+                st.markdown("今日復習したカードの原文を確認できます。")
+                
+                # 原文カードを取得
+                source_cards = get_source_cards_by_ids(list(set(reviewed_source_ids)))
+                
+                if source_cards:
+                    # 復習モードのセッション状態
+                    if "source_review_index" not in st.session_state:
+                        st.session_state.source_review_index = 0
+                    
+                    if st.session_state.source_review_index >= len(source_cards):
+                        st.session_state.source_review_index = 0
+                    
+                    current_source = source_cards[st.session_state.source_review_index]
+                    
+                    st.progress(
+                        (st.session_state.source_review_index + 1) / len(source_cards),
+                        text=f"原文 {st.session_state.source_review_index + 1} / {len(source_cards)}"
+                    )
+                    
+                    # 原文表示
+                    st.markdown(f"""
+                    <div class="flashcard">
+                        {f'<div class="flashcard-title">{current_source.get("title", "")}</div>' if current_source.get("title") else ''}
+                        {f'<div class="flashcard-category">{current_source.get("category", "その他")}</div>'}
+                        <div class="flashcard-question" style="font-size: 18px; text-align: left;">{current_source.get("source_text", "")}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # ナビゲーション
+                    nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
+                    with nav_col1:
+                        if st.session_state.source_review_index > 0:
+                            if st.button("◀ 前へ", use_container_width=True):
+                                st.session_state.source_review_index -= 1
+                                st.rerun()
+                    with nav_col2:
+                        if st.button("✓ 復習を終了", type="primary", use_container_width=True):
+                            st.session_state.reviewed_source_ids = []
+                            st.session_state.source_review_index = 0
+                            st.rerun()
+                    with nav_col3:
+                        if st.session_state.source_review_index < len(source_cards) - 1:
+                            if st.button("次へ ▶", use_container_width=True):
+                                st.session_state.source_review_index += 1
+                                st.rerun()
+                else:
+                    st.info("原文カードが見つかりませんでした。")
+                    if st.button("クリア"):
+                        st.session_state.reviewed_source_ids = []
+                        st.rerun()
         else:
-            progress = len(due_cards) / len(cards) if cards else 0
-            st.progress(progress, text=f"今日の残り: {len(due_cards)} 枚")
+            progress = (daily_limit - len(due_cards)) / daily_limit if daily_limit > 0 else 0
+            st.progress(progress, text=f"本日の残り: {len(due_cards)} / {daily_limit} 枚")
             
             # Current card session state
             if "current_card_index" not in st.session_state:
@@ -454,6 +576,14 @@ def show_main_app():
                 col1, col2, col3, col4 = st.columns(4)
                 
                 def process_review(quality):
+                    # 復習したカードのsource_idを追跡
+                    source_id = current_card.get('source_id')
+                    if source_id:
+                        if "reviewed_source_ids" not in st.session_state:
+                            st.session_state.reviewed_source_ids = []
+                        if source_id not in st.session_state.reviewed_source_ids:
+                            st.session_state.reviewed_source_ids.append(source_id)
+                    
                     new_stats = calculate_next_review(quality, current_card)
                     update_card_progress(user_id, current_card['id'], new_stats)
                     st.session_state.show_answer = False
@@ -673,12 +803,23 @@ def show_main_app():
                 submit_col1, submit_col2 = st.columns([1, 4])
                 with submit_col1:
                     if st.form_submit_button("💾 デッキに保存", type="primary"):
+                        # 原文カードを先に保存
+                        original_text = st.session_state.add_card_text if "add_card_text" in st.session_state else ""
+                        source_id = None
+                        if original_text:
+                            source_id = add_source_card(user_id, original_text, title=card_title, category=selected_category)
+                        
+                        # 穴埋めカードを保存
                         count = 0
+                        blank_count = len(cards_to_save)  # 穴埋め箇所の数
                         for card in cards_to_save:
                             if card['question'] and card['answer']:
-                                add_card(user_id, card['question'], card['answer'], title=card_title, category=selected_category)
+                                add_card(user_id, card['question'], card['answer'], 
+                                        title=card_title, category=selected_category,
+                                        source_id=source_id, blank_count=blank_count)
                                 count += 1
-                        st.success(f"{count} 枚のカードを保存しました！")
+                        
+                        st.success(f"{count} 枚のカードを保存しました！（原文カードも保存済み）")
                         # 全ての工程をクリア
                         if "phrases" in st.session_state:
                             del st.session_state.phrases
@@ -820,6 +961,48 @@ def show_main_app():
                                     if j < len(cards_in_group) - 1:
                                         st.markdown("---")
                                 st.markdown("")  # Add spacing after group
+        
+        # 原文カード管理セクション
+        st.markdown("---")
+        st.subheader("📖 原文カード管理")
+        
+        source_cards = load_source_cards(user_id)
+        
+        if not source_cards:
+            st.info("原文カードはまだありません。カードを作成すると自動的に保存されます。")
+        else:
+            st.markdown(f"**原文カード: {len(source_cards)} 件**")
+            
+            # 検索
+            source_search = st.text_input("🔍 原文を検索", placeholder="キーワードで検索...", key="source_search")
+            
+            if source_search:
+                source_cards = [s for s in source_cards if source_search.lower() in s.get('source_text', '').lower() or source_search.lower() in s.get('title', '').lower()]
+                st.markdown(f"*検索結果: {len(source_cards)} 件*")
+            
+            for sc in source_cards:
+                with st.expander(f"📄 {sc.get('title', '無題')} - {sc.get('category', 'その他')}"):
+                    st.markdown(f"**原文:**")
+                    st.text_area("", value=sc.get('source_text', ''), height=150, disabled=True, key=f"source_text_{sc['id']}")
+                    
+                    st.markdown(f"*作成日: {sc.get('created_at', '')[:10]}*")
+                    
+                    if st.button("🗑️ この原文カードを削除", key=f"del_source_{sc['id']}"):
+                        st.session_state[f"confirm_del_source_{sc['id']}"] = True
+                    
+                    if st.session_state.get(f"confirm_del_source_{sc['id']}", False):
+                        st.warning("⚠️ この原文カードを削除しますか？（関連する穴埋めカードは残ります）")
+                        col1, col2, col3 = st.columns([1, 1, 3])
+                        with col1:
+                            if st.button("✓ 削除", key=f"confirm_source_yes_{sc['id']}", type="primary"):
+                                delete_source_card(user_id, sc['id'])
+                                del st.session_state[f"confirm_del_source_{sc['id']}"]
+                                st.success("原文カードを削除しました")
+                                st.rerun()
+                        with col2:
+                            if st.button("✗ 戻る", key=f"confirm_source_no_{sc['id']}"):
+                                del st.session_state[f"confirm_del_source_{sc['id']}"]
+                                st.rerun()
 
 # ============ アプリケーション実行 ============
 

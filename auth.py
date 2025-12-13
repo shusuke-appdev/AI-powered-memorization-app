@@ -80,26 +80,63 @@ def authenticate_user(username, password):
         return False, "パスワードが正しくありません", None
 
 def get_username(user_id):
-    """ユーザーIDからユーザー名を取得"""
+    """ユーザーIDからユーザー名を取得（セッションキャッシュ付き）"""
+    import streamlit as st
+    cache_key = f"username_{user_id}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    
     supabase = get_supabase()
     result = supabase.table("users").select("username").eq("id", user_id).execute()
     if result.data:
-        return result.data[0]["username"]
+        username = result.data[0]["username"]
+        st.session_state[cache_key] = username
+        return username
     return None
 
 def get_api_key(user_id):
-    """ユーザーIDからAPIキーを取得"""
+    """ユーザーIDからAPIキーを取得（セッションキャッシュ付き）"""
+    import streamlit as st
+    cache_key = f"api_key_{user_id}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    
     supabase = get_supabase()
     result = supabase.table("users").select("api_key").eq("id", user_id).execute()
     if result.data:
-        return result.data[0].get("api_key", "")
+        api_key = result.data[0].get("api_key", "")
+        st.session_state[cache_key] = api_key
+        return api_key
     return ""
 
 def update_api_key(user_id, api_key):
     """ユーザーのAPIキーを更新"""
+    import streamlit as st
     supabase = get_supabase()
     result = supabase.table("users").update({"api_key": api_key}).eq("id", user_id).execute()
+    # キャッシュを更新
+    st.session_state[f"api_key_{user_id}"] = api_key
     return bool(result.data)
+
+# ============ ノルマ設定 ============
+
+DEFAULT_DAILY_QUOTA = 15
+
+def get_daily_quota_limit(user_id):
+    """ユーザーの1日のノルマ上限を取得（セッションキャッシュ）"""
+    import streamlit as st
+    cache_key = f"daily_quota_{user_id}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    # デフォルト値を返す（DBにカラムがない場合のフォールバック）
+    st.session_state[cache_key] = DEFAULT_DAILY_QUOTA
+    return DEFAULT_DAILY_QUOTA
+
+def update_daily_quota_limit(user_id, limit):
+    """ユーザーの1日のノルマ上限を更新（セッションキャッシュのみ）"""
+    import streamlit as st
+    st.session_state[f"daily_quota_{user_id}"] = limit
+    return True
 
 # ============ セッション管理 ============
 
