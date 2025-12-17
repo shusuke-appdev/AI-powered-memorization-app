@@ -87,10 +87,8 @@ def select_hybrid_quota(due_cards, limit, all_cards):
     if not due_cards:
         return []
     
-    if len(due_cards) <= limit:
-        return due_cards
-    
     # 1. 同一source_idのカードを除外（各source_idから1枚のみ）
+    # ※カード数に関わらず常に適用
     seen_source_ids = set()
     unique_cards = []
     for card in due_cards:
