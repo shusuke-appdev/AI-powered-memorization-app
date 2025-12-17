@@ -233,11 +233,14 @@ def generate_cards_from_selection(phrases, selected_indices):
             "answer": " / ".join(answers)
         }
     
-    if num_blanks <= 2:
-        # 2箇所以下: 1枚のカード
+    if num_blanks <= 3:
+        # 3箇所以下: 1枚のカード
         cards.append(build_card_from_groups(groups))
     else:
-        # 3箇所以上: 組み合わせから選択
+        # 4箇所以上: 穴埋め箇所数に応じてカード上限を設定
+        # 上限 = 穴埋め箇所数 - 2、ただし最大5枚
+        max_cards = min(num_blanks - 2, 5)
+        
         all_combos = list(combinations(range(len(groups)), min(3, num_blanks)))
         
         selected_combos = []
@@ -254,11 +257,11 @@ def generate_cards_from_selection(phrases, selected_indices):
             if new_coverage:
                 selected_combos.append(combo)
                 covered.update(combo)
-            if len(selected_combos) >= 10:
+            if len(selected_combos) >= max_cards:
                 break
         
         # 未カバーがあれば追加
-        while covered != set(range(num_blanks)) and len(selected_combos) < 10:
+        while covered != set(range(num_blanks)) and len(selected_combos) < max_cards:
             uncovered = set(range(num_blanks)) - covered
             for combo in shuffled_combos:
                 if any(i in uncovered for i in combo):
@@ -269,9 +272,9 @@ def generate_cards_from_selection(phrases, selected_indices):
             else:
                 break
         
-        # 10枚まで追加
+        # 上限まで追加
         remaining = [c for c in shuffled_combos if c not in selected_combos]
-        while len(selected_combos) < 10 and remaining:
+        while len(selected_combos) < max_cards and remaining:
             selected_combos.append(remaining.pop(0))
         
         # カード生成
