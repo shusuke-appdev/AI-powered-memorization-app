@@ -727,40 +727,48 @@ def show_main_app():
             
             # クリック式ブロックで文節を選択
             import re
-            punctuation_pattern = r'^[。、，．,.\s]+$'
+            punctuation_pattern = r'^[。、，．,.！？!?：:；;\s]+$'
             
             # 初期化
             if "selected_indices" not in st.session_state:
                 st.session_state.selected_indices = []
             
-            # 選択状態を取得
-            selected = list(st.session_state.selected_indices)
+            # 句読点以外の文節リストを作成（multiselect用）
+            selectable_phrases = []
+            phrase_to_index = {}
+            for i, phrase in enumerate(phrases):
+                if not re.match(punctuation_pattern, phrase):
+                    selectable_phrases.append(phrase)
+                    phrase_to_index[phrase] = i
             
-            # 文節ブロックをボタンで表示
-            st.markdown("クリックして穴埋め箇所を選択（緑=選択済み）:")
+            # 現在選択中の文節をリストに変換
+            current_selection = [phrases[i] for i in st.session_state.selected_indices if i < len(phrases)]
             
-            # 各文節をボタンとして表示
-            cols = st.columns(min(6, max(1, len(phrases))))
-            col_idx = 0
+            # multiselect で文節を選択
+            selected_phrases = st.multiselect(
+                "穴埋めにする文節を選択（複数選択可）:",
+                options=selectable_phrases,
+                default=[p for p in current_selection if p in selectable_phrases],
+                key="phrase_multiselect"
+            )
+            
+            # 選択をインデックスに変換
+            selected = [phrase_to_index[p] for p in selected_phrases if p in phrase_to_index]
+            st.session_state.selected_indices = selected
+            
+            # HTML Flexbox で文節を視覚的に表示（順番通り）
+            st.markdown("**原文（選択箇所がハイライト）:**")
+            html_parts = []
             for i, phrase in enumerate(phrases):
                 is_punctuation = re.match(punctuation_pattern, phrase)
-                
                 if is_punctuation:
-                    # 句読点は単にテキストとして表示
-                    with cols[col_idx % min(6, len(phrases))]:
-                        st.markdown(f"<span style='color:#9ca3af;'>{phrase}</span>", unsafe_allow_html=True)
+                    html_parts.append(f"<span class='phrase-block punctuation'>{phrase}</span>")
+                elif i in selected:
+                    html_parts.append(f"<span class='phrase-block selected'>{phrase}</span>")
                 else:
-                    with cols[col_idx % min(6, len(phrases))]:
-                        is_selected = i in selected
-                        btn_type = "primary" if is_selected else "secondary"
-                        if st.button(phrase, key=f"phrase_btn_{i}", type=btn_type):
-                            if is_selected:
-                                selected.remove(i)
-                            else:
-                                selected.append(i)
-                            st.session_state.selected_indices = selected
-                            st.rerun()
-                col_idx += 1
+                    html_parts.append(f"<span class='phrase-block unselected'>{phrase}</span>")
+            
+            st.markdown(f"<div class='phrase-container'>{''.join(html_parts)}</div>", unsafe_allow_html=True)
             
             # プレビュー表示（隣接する選択ブロックは1つの穴埋めとして結合）
             if selected:
