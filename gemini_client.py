@@ -24,7 +24,7 @@ def split_into_phrases(text, api_key):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-3-flash-preview")
         
         prompt = f"""以下のテキストを、暗記カード用の意味のまとまりに分割してください。
 
@@ -101,7 +101,7 @@ def suggest_blanks(phrases, api_key):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-3-flash-preview")
         
         # 文節にインデックスを付ける
         indexed_phrases = [f"{i}: {p}" for i, p in enumerate(phrases)]
