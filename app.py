@@ -44,13 +44,17 @@ st.markdown("""
     
     .flashcard-title {
         position: absolute;
-        top: 10px;
+        top: 12px;
         left: 20px;
-        font-size: 14px;
-        color: #9ca3af;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        font-size: 16px;
+        color: #059669;
+        font-weight: 700;
+        text-transform: none;
+        letter-spacing: 0;
+        background-color: #d1fae5;
+        padding: 4px 12px;
+        border-radius: 8px;
+        border: 1px solid #10b981;
     }
 
     .flashcard-category {
@@ -193,6 +197,67 @@ st.markdown("""
         color: #6b7280;
         cursor: default;
         padding: 8px 4px;
+    }
+    
+    /* Stylish phrase toggle grid */
+    .phrase-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 20px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        margin: 20px 0;
+    }
+    
+    .phrase-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 18px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 2px solid transparent;
+        user-select: none;
+    }
+    
+    .phrase-toggle.normal {
+        background: white;
+        color: #374151;
+        border-color: #e5e7eb;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .phrase-toggle.normal:hover {
+        border-color: #10b981;
+        background: #f0fdf4;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(16,185,129,0.15);
+    }
+    
+    .phrase-toggle.selected {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        border-color: #059669;
+        box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+    }
+    
+    .phrase-toggle.selected:hover {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        transform: translateY(-1px);
+    }
+    
+    .phrase-toggle.punct {
+        background: transparent;
+        color: #9ca3af;
+        border: none;
+        padding: 10px 4px;
+        cursor: default;
+        box-shadow: none;
     }
 
 </style>
@@ -665,42 +730,77 @@ def show_main_app():
         selected_category = selected_category_raw if selected_category_raw != "-- カテゴリを選択 --" else ""
         st.session_state.add_card_category = selected_category
 
-        # Title input
-        card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key=f"title_input_{st.session_state.widget_key_counter}")
+        # Title input with autocomplete disabled
+        st.markdown("""
+        <style>
+        input[data-testid="stTextInput"][aria-label*="タイトル"] {
+            autocomplete: off;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key=f"title_input_{st.session_state.widget_key_counter}", autocomplete="off")
         st.session_state.add_card_title = card_title
         
         # ステップ1: テキスト入力
         st.subheader("① テキストを入力")
+        
+        # 手動/AI切り替え
+        if "manual_mode" not in st.session_state:
+            st.session_state.manual_mode = False
+        
+        manual_mode = st.checkbox("✍️ 手動で穴埋め箇所を指定する（【】で囲む）", value=st.session_state.manual_mode, key="manual_mode_checkbox")
+        st.session_state.manual_mode = manual_mode
+        
+        if manual_mode:
+            st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
+        
         source_text = st.text_area(
-            "覚えたいテキストを入力:",
+            "",
             value=st.session_state.add_card_text,
             height=200,
-            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
-            key=f"text_input_{st.session_state.widget_key_counter}"
+            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。\n\n手動モード時: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
+            key=f"text_input_{st.session_state.widget_key_counter}",
+            label_visibility="collapsed"
         )
         st.session_state.add_card_text = source_text
         
         # インポート
-        from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection
+        from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection, parse_blanks_from_text
         
-        # 文節分割ボタン
-        if st.button("📝 テキストを解析", type="primary"):
-            if not source_text:
-                st.warning("テキストを入力してください。")
-            elif not api_key:
-                st.warning("APIキーを設定してください。")
-            else:
-                with st.spinner("AIがテキストを解析中..."):
-                    phrases = split_into_phrases(source_text, api_key)
-                    # エラーチェック
-                    if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
-                        st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
-                    elif phrases:
-                        st.session_state.phrases = phrases
-                        st.session_state.selected_indices = []
-                        st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
+        if manual_mode:
+            # 手動モード: 【】マーカーで直接カード生成
+            if st.button("✨ カード生成", type="primary", key="manual_generate_btn"):
+                if not source_text:
+                    st.warning("テキストを入力してください。")
+                elif "【" not in source_text or "】" not in source_text:
+                    st.warning("【】で穴埋め箇所を指定してください。例: 民法【709条】は...")
+                else:
+                    cards = parse_blanks_from_text(source_text)
+                    if cards:
+                        st.session_state.generated_cards = cards
+                        st.success(f"{len(cards)} 枚のカードを生成しました！")
                     else:
-                        st.error("テキストの解析に失敗しました。")
+                        st.error("カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。")
+        else:
+            # AIモード: 文節分割ボタン
+            if st.button("📝 テキストを解析", type="primary"):
+                if not source_text:
+                    st.warning("テキストを入力してください。")
+                elif not api_key:
+                    st.warning("APIキーを設定してください。")
+                else:
+                    with st.spinner("AIがテキストを解析中..."):
+                        phrases = split_into_phrases(source_text, api_key)
+                        # エラーチェック
+                        if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
+                            st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
+                        elif phrases:
+                            st.session_state.phrases = phrases
+                            st.session_state.selected_indices = []
+                            st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
+                        else:
+                            st.error("テキストの解析に失敗しました。")
         
         # ステップ2: 穴埋め箇所を選択
         if "phrases" in st.session_state and st.session_state.phrases:
@@ -733,42 +833,60 @@ def show_main_app():
             if "selected_indices" not in st.session_state:
                 st.session_state.selected_indices = []
             
-            # 句読点以外の文節リストを作成（multiselect用）
-            selectable_phrases = []
-            phrase_to_index = {}
-            for i, phrase in enumerate(phrases):
-                if not re.match(punctuation_pattern, phrase):
-                    selectable_phrases.append(phrase)
-                    phrase_to_index[phrase] = i
+            # クリックでトグルする関数
+            def toggle_phrase(idx):
+                if idx in st.session_state.selected_indices:
+                    st.session_state.selected_indices.remove(idx)
+                else:
+                    st.session_state.selected_indices.append(idx)
             
-            # 現在選択中の文節をリストに変換
-            current_selection = [phrases[i] for i in st.session_state.selected_indices if i < len(phrases)]
+            # 文節をクリック可能なボタンとして表示
+            st.markdown("**クリックで穴埋め箇所を選択:**")
             
-            # multiselect で文節を選択
-            selected_phrases = st.multiselect(
-                "穴埋めにする文節を選択（複数選択可）:",
-                options=selectable_phrases,
-                default=[p for p in current_selection if p in selectable_phrases],
-                key="phrase_multiselect"
-            )
+            # ボタングリッドを作成（5列）
+            cols_per_row = 5
+            phrase_buttons_html = []
             
-            # 選択をインデックスに変換
-            selected = [phrase_to_index[p] for p in selected_phrases if p in phrase_to_index]
-            st.session_state.selected_indices = selected
-            
-            # HTML Flexbox で文節を視覚的に表示（順番通り）
-            st.markdown("**原文（選択箇所がハイライト）:**")
-            html_parts = []
             for i, phrase in enumerate(phrases):
                 is_punctuation = re.match(punctuation_pattern, phrase)
+                is_selected = i in st.session_state.selected_indices
+                
                 if is_punctuation:
-                    html_parts.append(f"<span class='phrase-block punctuation'>{phrase}</span>")
-                elif i in selected:
-                    html_parts.append(f"<span class='phrase-block selected'>{phrase}</span>")
+                    phrase_buttons_html.append(f"<span class='phrase-toggle punct'>{phrase}</span>")
+                elif is_selected:
+                    phrase_buttons_html.append(f"<span class='phrase-toggle selected' data-idx='{i}'>{phrase}</span>")
                 else:
-                    html_parts.append(f"<span class='phrase-block unselected'>{phrase}</span>")
+                    phrase_buttons_html.append(f"<span class='phrase-toggle normal' data-idx='{i}'>{phrase}</span>")
             
-            st.markdown(f"<div class='phrase-container'>{''.join(html_parts)}</div>", unsafe_allow_html=True)
+            # HTMLでプレビュー表示
+            st.markdown(f"<div class='phrase-grid'>{''.join(phrase_buttons_html)}</div>", unsafe_allow_html=True)
+            
+            # Streamlit button で実際のトグル実装
+            st.markdown("---")
+            
+            # 選択可能な文節のみボタン化（句読点以外）
+            selectable_phrases = [(i, phrase) for i, phrase in enumerate(phrases) 
+                                  if not re.match(punctuation_pattern, phrase)]
+            
+            # ボタン行を複数作成
+            if selectable_phrases:
+                # 行ごとに分割
+                rows = [selectable_phrases[i:i+4] for i in range(0, len(selectable_phrases), 4)]
+                
+                for row in rows:
+                    cols = st.columns(len(row))
+                    for col_idx, (phrase_idx, phrase_text) in enumerate(row):
+                        with cols[col_idx]:
+                            is_selected = phrase_idx in st.session_state.selected_indices
+                            btn_label = f"✓ {phrase_text}" if is_selected else phrase_text
+                            btn_type = "primary" if is_selected else "secondary"
+                            if st.button(btn_label, key=f"toggle_{phrase_idx}", type=btn_type, use_container_width=True):
+                                toggle_phrase(phrase_idx)
+                                st.rerun()
+            
+            # 選択状態を取得
+            selected = st.session_state.selected_indices.copy()
+
             
             # プレビュー表示（隣接する選択ブロックは1つの穴埋めとして結合）
             if selected:
@@ -937,11 +1055,17 @@ def show_main_app():
                                     
                                     cards_modified = False
                                     for j, card in enumerate(linked_cards):
-                                        col1, col2 = st.columns(2)
+                                        col1, col2, col3 = st.columns([5, 5, 1])
                                         with col1:
                                             new_q = st.text_input(f"問題 {j+1}", value=card['question'], key=f"q_{card['id']}")
                                         with col2:
                                             new_a = st.text_input(f"答え {j+1}", value=card['answer'], key=f"a_{card['id']}")
+                                        with col3:
+                                            st.markdown("")  # スペーサー
+                                            if st.button("🗑️", key=f"del_single_{card['id']}", help="このカードのみ削除"):
+                                                delete_card(user_id, card['id'])
+                                                st.success("カードを削除しました")
+                                                st.rerun()
                                         
                                         if new_q != card['question'] or new_a != card['answer']:
                                             cards_modified = True
