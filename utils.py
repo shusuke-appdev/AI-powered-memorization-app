@@ -129,6 +129,7 @@ def select_hybrid_quota(due_cards, limit, all_cards):
 def _adjust_to_target_blanks(selected, candidates, target, limit):
     """
     総穴埋め数を目標値に近づけるよう調整
+    ※同一source_idのカードが選ばれないようチェック
     """
     current_blanks = sum(c.get('blank_count', 1) for c in selected)
     
@@ -139,10 +140,16 @@ def _adjust_to_target_blanks(selected, candidates, target, limit):
     # 選ばれていないカードを取得
     not_selected = [c for c in candidates if c not in selected]
     
+    # 現在選択中のsource_idセット（重複チェック用）
+    def get_selected_source_ids(cards):
+        return {c.get('source_id') for c in cards if c.get('source_id') is not None}
+    
     # 入れ替え試行（最大5回）
     for _ in range(5):
         if abs(current_blanks - target) < 1:
             break
+        
+        selected_source_ids = get_selected_source_ids(selected)
         
         if current_blanks > target:
             # 穴埋めが多いカードを少ないカードに入れ替え
@@ -151,6 +158,12 @@ def _adjust_to_target_blanks(selected, candidates, target, limit):
             
             for high_card in high_blank_cards:
                 for low_card in low_blank_candidates:
+                    low_card_source_id = low_card.get('source_id')
+                    # 入れ替え対象のsource_idが既に選択済みならスキップ
+                    if low_card_source_id is not None and low_card_source_id in selected_source_ids:
+                        if low_card_source_id != high_card.get('source_id'):
+                            continue  # 異なるsource_idが既に存在 → スキップ
+                    
                     if low_card.get('blank_count', 1) < high_card.get('blank_count', 1):
                         # 入れ替え
                         selected = [c for c in selected if c != high_card] + [low_card]
@@ -166,6 +179,12 @@ def _adjust_to_target_blanks(selected, candidates, target, limit):
             
             for low_card in low_blank_cards:
                 for high_card in high_blank_candidates:
+                    high_card_source_id = high_card.get('source_id')
+                    # 入れ替え対象のsource_idが既に選択済みならスキップ
+                    if high_card_source_id is not None and high_card_source_id in selected_source_ids:
+                        if high_card_source_id != low_card.get('source_id'):
+                            continue  # 異なるsource_idが既に存在 → スキップ
+                    
                     if high_card.get('blank_count', 1) > low_card.get('blank_count', 1):
                         # 入れ替え
                         selected = [c for c in selected if c != low_card] + [high_card]
@@ -176,3 +195,4 @@ def _adjust_to_target_blanks(selected, candidates, target, limit):
                     break
     
     return selected[:limit]
+
