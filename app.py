@@ -827,7 +827,7 @@ def show_main_app():
             
             # クリック式ブロックで文節を選択
             import re
-            punctuation_pattern = r'^[。、，．,.！？!?：:；;\s]+$'
+            punctuation_pattern = r'^[。、，．,.！？!?：:；;\s①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]+$'
             
             # 初期化
             if "selected_indices" not in st.session_state:
@@ -1084,13 +1084,18 @@ def show_main_app():
                                         # TODO: update_source_card関数が必要な場合は追加
                                         
                                         # 暗記カード更新
+                                        updated_count = 0
                                         for card in linked_cards:
                                             new_q = st.session_state.get(f"q_{card['id']}", card['question'])
                                             new_a = st.session_state.get(f"a_{card['id']}", card['answer'])
                                             if new_q != card['question'] or new_a != card['answer']:
                                                 update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), card.get('category', 'その他'))
+                                                updated_count += 1
                                         
-                                        st.success("保存しました")
+                                        if updated_count > 0:
+                                            st.success(f"✅ {updated_count}枚のカードを更新しました")
+                                        else:
+                                            st.info("変更はありませんでした")
                                         st.rerun()
                                 
                                 with btn_col2:
