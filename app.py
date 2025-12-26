@@ -590,20 +590,34 @@ def show_main_app():
         if st.session_state.get("quota_date") != today:
             st.session_state.quota_date = today
             st.session_state.reviewed_source_ids = []
+            st.session_state.reviewed_card_ids = []
             st.session_state.reviewed_card_count = 0
+            st.session_state.quota_card_ids = None  # その日のノルマカードIDをリセット
         
-        # 復習済みのsource_idを取得
-        reviewed_source_ids = set(st.session_state.get("reviewed_source_ids", []))
+        # 復習済みのcard_idを取得
+        reviewed_card_ids = set(st.session_state.get("reviewed_card_ids", []))
         
-        # Filter cards due for review（復習済みのsource_idを除外）
+        # その日のノルマカードIDが未設定なら初回選択
+        if st.session_state.get("quota_card_ids") is None:
+            # Filter cards due for review
+            all_due_cards = [c for c in cards if c['next_review'] <= today]
+            # ハイブリッド選択でノルマカードを決定
+            selected_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
+            st.session_state.quota_card_ids = [c['id'] for c in selected_cards]
+        
+        # 保存されたノルマカードIDから、まだ復習していないカードを取得
+        quota_card_ids = set(st.session_state.get("quota_card_ids", []))
+        remaining_quota_ids = quota_card_ids - reviewed_card_ids
+        
+        # 復習対象カードのリストを構築（IDベースで）
+        cards_by_id = {c['id']: c for c in cards}
+        due_cards = [cards_by_id[cid] for cid in remaining_quota_ids if cid in cards_by_id]
+        
+        # 期限日が古い順にソート
+        due_cards.sort(key=lambda c: c.get('next_review', '9999-99-99'))
+        
+        # all_due_cardsは表示用に計算
         all_due_cards = [c for c in cards if c['next_review'] <= today]
-        available_due_cards = [c for c in all_due_cards if c.get('source_id') not in reviewed_source_ids or c.get('source_id') is None]
-        
-        # Apply hybrid quota selection algorithm
-        # 残りのノルマ枚数を計算
-        reviewed_count = st.session_state.get("reviewed_card_count", 0)
-        remaining_limit = max(0, daily_limit - reviewed_count)
-        due_cards = select_hybrid_quota(available_due_cards, remaining_limit, cards)
         
         if not due_cards:
             st.markdown("""
@@ -673,10 +687,12 @@ def show_main_app():
                         st.session_state.reviewed_source_ids = []
                         st.rerun()
         else:
+            # 固定されたノルマ数と残り枚数を計算
+            total_quota = len(st.session_state.get("quota_card_ids", []))
             reviewed_count = st.session_state.get("reviewed_card_count", 0)
-            remaining = min(len(due_cards), daily_limit - reviewed_count)
-            progress = reviewed_count / daily_limit if daily_limit > 0 else 0
-            st.progress(progress, text=f"本日の進捗: {reviewed_count} / {daily_limit} 枚完了（残り {remaining} 枚）")
+            remaining = len(due_cards)
+            progress = reviewed_count / total_quota if total_quota > 0 else 0
+            st.progress(progress, text=f"本日の進捗: {reviewed_count} / {total_quota} 枚完了（残り {remaining} 枚）")
             
             # Current card session state
             if "current_card_index" not in st.session_state:
@@ -711,15 +727,22 @@ def show_main_app():
                 col1, col2, col3, col4 = st.columns(4)
                 
                 def process_review(quality):
-                    # 復習したカードのsource_idを追跡
+                    # 復習したカードIDを追跡
+                    card_id = current_card['id']
+                    if "reviewed_card_ids" not in st.session_state:
+                        st.session_state.reviewed_card_ids = []
+                    if card_id not in st.session_state.reviewed_card_ids:
+                        st.session_state.reviewed_card_ids.append(card_id)
+                        # 復習済みカード数をインクリメント
+                        st.session_state.reviewed_card_count = st.session_state.get("reviewed_card_count", 0) + 1
+                    
+                    # 復習したカードのsource_idも追跡（原文復習用）
                     source_id = current_card.get('source_id')
                     if source_id:
                         if "reviewed_source_ids" not in st.session_state:
                             st.session_state.reviewed_source_ids = []
                         if source_id not in st.session_state.reviewed_source_ids:
                             st.session_state.reviewed_source_ids.append(source_id)
-                            # 復習済みカード数をインクリメント（同一原文での初回のみ）
-                            st.session_state.reviewed_card_count = st.session_state.get("reviewed_card_count", 0) + 1
                     
                     new_stats = calculate_next_review(quality, current_card)
                     update_card_progress(user_id, current_card['id'], new_stats)
