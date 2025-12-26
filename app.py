@@ -1,7 +1,7 @@
-﻿import streamlit as st
+import streamlit as st
 import datetime
 import os
-from gemini_client import generate_flashcards
+from gemini_client import generate_flashcards, help_chat
 from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card
 from utils import calculate_next_review, select_hybrid_quota
 from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key, get_daily_quota_limit, update_daily_quota_limit
@@ -364,163 +364,217 @@ def show_main_app():
     user_id = st.session_state.user_id
     username = st.session_state.get("username", "ユーザー")
     
-    # Header with logout and help
-    header_col1, header_col2, header_col3 = st.columns([3, 2, 1])
-    with header_col1:
-        st.title("🧠 AI 暗記カード")
-    with header_col2:
-        st.markdown("")  # スペーサー
-        st.markdown(f"**{username}** さん")
-    with header_col3:
-        if st.button("ログアウト", use_container_width=True):
-            logout()
-        if st.button("❓ ヘルプ", use_container_width=True):
-            st.session_state.show_help = True
-    
-    # ヘルプダイアログ
-    if st.session_state.get("show_help", False):
-        with st.expander("📖 ヘルプ", expanded=True):
-            st.markdown("""
-## 🎯 このアプリでできること
-- 覚えたいテキストから**穴埋め式の暗記カード**を作成
-- **AI**がテキストを分析して、穴埋め箇所を提案
-- 科学的な復習スケジュール（**SM-2アルゴリズム**）で効率的に暗記
-- **本日のノルマ機能**で1日の学習量を管理
-- **原文カード**で復習後に元のテキストを確認可能
-
----
-
-## 📊 ノルマ設定
-
-1日に復習するカードの上限を設定できます。
-
-1. **「📊 ノルマ設定」**を開く
-2. 上限枚数を設定（デフォルト: 15枚）
-3. 数値を変更すると自動保存
-
-> **ハイブリッド最適化**: ノルマ内のカード選択は自動的に最適化されます：
-> - 半分は「苦手なカード」（忘れやすいもの）を優先
-> - 半分は「期限が古いカード」を優先
-> - 同じ原文のカードは1日1枚まで（重複防止）
-
----
-
-## 📝 カードの作成方法
-
-### ステップ1: テキスト入力
-1. **「カードを追加」タブ** を開く
-2. カテゴリとタイトルを設定
-3. 覚えたいテキストを入力
-4. **「テキストを解析」** をクリック
-
-### ステップ2: 穴埋め箇所を選択
-- AIがテキストを文節に分割
-- **クリックで穴埋め箇所を選択**（緑=選択済み）
-- 「🤖 AIに提案させる」で自動選択も可能
-
-### ステップ3: カード生成
-- **「カード生成」** → プレビュー確認 → **「デッキに保存」**
-- **原文も自動保存**: カード保存時に、元のテキスト（原文）も自動的に保存されます
-
----
-
-## 🎯 復習のやり方（本日のノルマ）
-1. **「📚 復習する」**タブ（タイトル:「本日のノルマ」）
-2. 問題を見て答えを考える
-3. **「答えを見る」** をクリック
-4. 覚えていた度合いを4段階で評価
-
-| ボタン | 意味 | 次回復習 |
-|--------|------|---------|
-| 忘れた | 完全に忘れていた | 翌日 |
-| 難しい | 思い出すのに苦労 | 数日後 |
-| 普通 | 少し考えて思い出した | 約1週間後 |
-| 簡単 | すぐに思い出せた | 2週間以上後 |
-
----
-
-## 📖 ノルマ復習（原文確認）
-
-本日のノルマを完了すると、**原文確認モード**が表示されます。
-
-1. ノルマ完了後、**「📖 ノルマ復習（原文確認）」**セクションが表示
-2. 今日復習したカードの**原文テキスト**を順番に確認
-3. **「◀ 前へ」「次へ ▶」**で移動
-4. 確認が終わったら**「✓ 復習を終了」**
-
-> **目的**: 穴埋めで学んだ内容を、原文全体の文脈で再確認することで定着率アップ！
-
----
-
-## 🗂️ カードを管理する
-
-1. **「🗂️ カード管理」**タブをクリック
-2. カテゴリタブで絞り込み
-3. 🔍 検索ボックスでキーワード検索
-4. 各カードの「問題」「答え」「カテゴリ」を編集 → **「更新」**で保存
-5. 不要なカードは**「🗑️ このカードを削除」**で削除
-6. タイトル単位で一括削除も可能（**「🗑️ 全削除」**）
-
----
-
-## 🔑 APIキー設定
-1. [Google AI Studio](https://aistudio.google.com/) でキーを取得
-2. **「⚙️ APIキー設定」** に貼り付けて保存
-
-### 無料枠制限エラーが出たら
-しばらく待ってから再試行するか、新しいAPIキーを取得してください。
-            """)
-            if st.button("閉じる"):
-                st.session_state.show_help = False
-                st.rerun()
-
     # API Key - ユーザーアカウントから読み込み
     user_api_key = get_api_key(user_id)
-    
-    # APIキー設定セクション
-    with st.expander("⚙️ APIキー設定", expanded=not user_api_key):
-        if user_api_key:
-            st.success("✅ APIキーが設定されています")
-            new_api_key = st.text_input("APIキーを変更", type="password", placeholder="新しいAPIキーを入力...", key="update_api_key_input")
-            if st.button("APIキーを更新"):
-                if new_api_key:
-                    update_api_key(user_id, new_api_key)
-                    st.success("APIキーを更新しました！")
-                    st.rerun()
-                else:
-                    st.warning("新しいAPIキーを入力してください")
-        else:
-            st.warning("⚠️ APIキーが設定されていません。カード生成にはAPIキーが必要です。")
-            new_api_key = st.text_input("Gemini APIキー", type="password", help="Google GeminiのAPIキーを入力してください", key="set_api_key_input")
-            if st.button("APIキーを保存"):
-                if new_api_key:
-                    update_api_key(user_id, new_api_key)
-                    st.success("APIキーを保存しました！")
-                    st.rerun()
-                else:
-                    st.warning("APIキーを入力してください")
-    
-    # 使用するAPIキー
     api_key = user_api_key
-
-    # ノルマ上限設定セクション
-    with st.expander("📊 ノルマ設定"):
-        current_quota = get_daily_quota_limit(user_id)
-        new_quota = st.number_input(
-            "1日のノルマ上限（枚）",
-            min_value=1,
-            max_value=100,
-            value=current_quota,
-            step=1,
-            help="1日に復習するカードの最大枚数"
-        )
-        if new_quota != current_quota:
-            update_daily_quota_limit(user_id, new_quota)
-            st.success(f"ノルマ上限を {new_quota} 枚に設定しました")
-            st.rerun()
-
-    st.markdown("---")
-
+    
+    # ============ サイドバー（常時展開） ============
+    
+    # サイドバースタイル
+    st.markdown("""
+    <style>
+    /* サイドバー幅設定 - 常時展開、幅を大きく */
+    [data-testid="stSidebar"] {
+        min-width: 350px !important;
+        max-width: 350px !important;
+    }
+    
+    /* 折りたたみボタンを非表示 */
+    [data-testid="stSidebarCollapseButton"] {
+        display: none !important;
+    }
+    
+    /* サイドバーの背景色を薄いグレーに */
+    [data-testid="stSidebar"] > div:first-child {
+        background: #f3f4f6 !important;
+        padding: 1rem !important;
+    }
+    
+    /* サイドバー内のテキスト色を黒に */
+    [data-testid="stSidebar"] * {
+        color: #1f2937 !important;
+    }
+    
+    /* ボタンスタイル */
+    [data-testid="stSidebar"] .stButton button {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white !important;
+        border: none;
+        border-radius: 10px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+    [data-testid="stSidebar"] .stButton button:hover {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    }
+    [data-testid="stSidebar"] hr {
+        border-color: #d1d5db;
+        margin: 0.5rem 0;
+    }
+    
+    /* 入力フィールド - 大きく */
+    [data-testid="stSidebar"] .stTextInput input {
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #1f2937 !important;
+        border-radius: 12px;
+        padding: 16px !important;
+        font-size: 15px !important;
+        height: 50px !important;
+    }
+    [data-testid="stSidebar"] .stNumberInput input {
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #1f2937 !important;
+    }
+    
+    /* チャット履歴コンテナの枠を削除 */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    /* ヘルプAIタイトル */
+    .help-ai-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #10b981 !important;
+        margin-bottom: 8px;
+    }
+    
+    /* チャットメッセージ */
+    .chat-message {
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin-bottom: 6px;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .chat-message.user {
+        background: #e5e7eb;
+        margin-left: 15px;
+        border-left: 3px solid #6b7280;
+    }
+    .chat-message.assistant {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        margin-right: 15px;
+        border-left: 3px solid #10b981;
+        color: #065f46 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    with st.sidebar:
+        # ユーザー情報セクション（最上部）
+        st.markdown(f"### 👤 {username} さん")
+        st.markdown("---")
+        
+        # APIキー設定セクション（コンパクト）
+        st.markdown("##### ⚙️ APIキー設定")
+        if user_api_key:
+            st.success("✅ 設定済み")
+            with st.expander("キーを変更", expanded=False):
+                new_api_key = st.text_input("新しいAPIキー", type="password", placeholder="AIza...", key="sidebar_api_key_input")
+                if st.button("更新", key="sidebar_update_api"):
+                    if new_api_key:
+                        update_api_key(user_id, new_api_key)
+                        st.success("更新しました！")
+                        st.rerun()
+        else:
+            st.warning("⚠️ 未設定")
+            new_api_key = st.text_input("Gemini APIキー", type="password", placeholder="AIza...", key="sidebar_set_api_key")
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("保存", key="sidebar_save_api"):
+                    if new_api_key:
+                        update_api_key(user_id, new_api_key)
+                        st.success("保存しました！")
+                        st.rerun()
+            with col2:
+                st.markdown("[🔗 取得](https://aistudio.google.com/)")
+        
+        st.markdown("---")
+        
+        # ノルマ設定（コンパクト・横並び）
+        col_label, col_input = st.columns([1, 1])
+        with col_label:
+            st.markdown("##### 📊 ノルマ")
+        with col_input:
+            current_quota = get_daily_quota_limit(user_id)
+            new_quota = st.number_input(
+                "上限",
+                min_value=1,
+                max_value=100,
+                value=current_quota,
+                step=1,
+                key="sidebar_quota",
+                label_visibility="collapsed"
+            )
+            if new_quota != current_quota:
+                update_daily_quota_limit(user_id, new_quota)
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # ヘルプAI チャットセクション
+        st.markdown("<div class='help-ai-title'>🤖 ヘルプAI</div>", unsafe_allow_html=True)
+        
+        # チャット履歴の初期化
+        if "help_chat_history" not in st.session_state:
+            st.session_state.help_chat_history = []
+        
+        # チャット履歴表示（大きなコンテナ）
+        chat_container = st.container(height=450)
+        with chat_container:
+            if not st.session_state.help_chat_history:
+                st.markdown("<div style='color: #6b7280; font-size: 13px; padding: 10px;'>💬 アプリの使い方について質問してください</div>", unsafe_allow_html=True)
+            else:
+                for msg in st.session_state.help_chat_history:
+                    if msg["role"] == "user":
+                        st.markdown(f"<div class='chat-message user'>🧑 {msg['content']}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div class='chat-message assistant'>🤖 {msg['content']}</div>", unsafe_allow_html=True)
+        
+        # 質問入力（フォームで送信）
+        with st.form(key="help_chat_form", clear_on_submit=True):
+            user_question = st.text_area(
+                "質問を入力",
+                placeholder="質問を入力... (Ctrl+Enterで送信)",
+                key="help_question_input",
+                label_visibility="collapsed",
+                height=215
+            )
+            submitted = st.form_submit_button("送信", use_container_width=True)
+            
+            if submitted and user_question and user_question.strip():
+                if not api_key:
+                    st.error("APIキーを設定してください")
+                else:
+                    st.session_state.help_chat_history.append({"role": "user", "content": user_question})
+                    with st.spinner("回答中..."):
+                        result = help_chat(user_question, api_key, st.session_state.help_chat_history[:-1])
+                    if result["success"]:
+                        st.session_state.help_chat_history.append({"role": "assistant", "content": result["response"]})
+                    else:
+                        st.session_state.help_chat_history.append({"role": "assistant", "content": f"⚠️ {result['error']}"})
+                    st.rerun()
+        
+        # 履歴クリアボタン（コンパクト）
+        if st.session_state.help_chat_history:
+            if st.button("🗑️ 履歴クリア", key="clear_chat"):
+                st.session_state.help_chat_history = []
+                st.rerun()
+        
+        # ログアウトボタン（下部）
+        st.markdown("---")
+        if st.button("🚪 ログアウト", use_container_width=True, key="sidebar_logout"):
+            logout()
+    
+    # ============ メインコンテンツ ============
+    
+    # タイトル
+    st.title("🧠 AI 暗記カード")
+    
     # Tab Navigation
     tab1, tab2, tab3 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🗂️ カード管理"])
 

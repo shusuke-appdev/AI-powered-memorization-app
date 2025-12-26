@@ -359,3 +359,88 @@ def generate_flashcards(text, api_key=None, keywords=None):
     if not is_valid:
         return None
     return parse_blanks_from_text(text)
+
+# ============ ヘルプAIチャット ============
+
+import os
+
+def _load_help_context():
+    """HELP_AI_CONTEXT.mdを読み込む"""
+    # スクリプトと同じディレクトリにあるファイルを読み込み
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    context_path = os.path.join(script_dir, "HELP_AI_CONTEXT.md")
+    
+    try:
+        with open(context_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        print(f"ヘルプコンテキスト読み込みエラー: {e}")
+        return ""
+
+def help_chat(user_question: str, api_key: str, chat_history: list = None) -> dict:
+    """
+    アプリのヘルプAIチャットボット
+    
+    Args:
+        user_question (str): ユーザーの質問
+        api_key (str): Gemini APIキー
+        chat_history (list): 過去のチャット履歴 [{"role": "user/assistant", "content": "..."}, ...]
+        
+    Returns:
+        dict: {"success": bool, "response": str, "error": str (optional)}
+    """
+    if not api_key:
+        return {"success": False, "error": "APIキーが設定されていません。左側のメニューからAPIキーを設定してください。"}
+    
+    if not user_question or not user_question.strip():
+        return {"success": False, "error": "質問を入力してください。"}
+    
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        # ヘルプコンテキストを読み込み
+        help_context = _load_help_context()
+        
+        # システムプロンプト
+        system_prompt = f"""あなたは「AI暗記カード」アプリのヘルプアシスタントです。
+ユーザーからの質問に、以下のアプリ情報を元に回答してください。
+
+【重要なルール】
+1. このアプリに関係する質問にのみ回答してください
+2. アプリに関係ない質問（天気、雑談、他のアプリについてなど）には丁寧にお断りしてください
+3. 回答は簡潔にしてください（2-3文程度が理想）
+4. 専門用語は分かりやすく説明してください
+5. 手順を説明する際は箇条書きを使ってください
+
+【アプリ情報】
+{help_context}
+"""
+        
+        # チャット履歴を組み立て
+        messages = [{"role": "user", "parts": [system_prompt + "\n\n（以下がユーザーとの会話です）"]}]
+        messages.append({"role": "model", "parts": ["了解しました。AI暗記カードアプリのヘルプアシスタントとして、ご質問にお答えします。"]})
+        
+        if chat_history:
+            for msg in chat_history:
+                role = "user" if msg.get("role") == "user" else "model"
+                messages.append({"role": role, "parts": [msg.get("content", "")]})
+        
+        # 現在の質問を追加
+        messages.append({"role": "user", "parts": [user_question]})
+        
+        # チャットでレスポンスを生成
+        chat = model.start_chat(history=messages[:-1])
+        response = chat.send_message(user_question)
+        
+        return {"success": True, "response": response.text}
+        
+    except Exception as e:
+        error_str = str(e).lower()
+        if "quota" in error_str or "rate" in error_str or "limit" in error_str or "429" in error_str:
+            return {"success": False, "error": "APIの無料枠利用制限に達しました。しばらく待ってから再試行してください。"}
+        print(f"ヘルプAIエラー: {e}")
+        return {"success": False, "error": f"エラーが発生しました: {str(e)}"}
+
