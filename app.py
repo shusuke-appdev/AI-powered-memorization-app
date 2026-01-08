@@ -527,14 +527,20 @@ def show_main_app():
         # ユーザー情報セクション（最上部）
         st.markdown(f"### 👤 {username} さん")
         
-        # ダークモードトグル
+        # ダークモードトグル（1ボタン切り替え）
         if "dark_mode" not in st.session_state:
             st.session_state.dark_mode = False
         
-        dark_mode = st.checkbox("🌙 ダークモード", value=st.session_state.dark_mode, key="dark_mode_toggle")
-        if dark_mode != st.session_state.dark_mode:
-            st.session_state.dark_mode = dark_mode
-            st.rerun()
+        if st.session_state.dark_mode:
+            # ダークモード中 → ライトに切り替えるボタン
+            if st.button("☀️ ライトモードに切替", key="theme_toggle", use_container_width=True):
+                st.session_state.dark_mode = False
+                st.rerun()
+        else:
+            # ライトモード中 → ダークに切り替えるボタン
+            if st.button("🌙 ダークモードに切替", key="theme_toggle", use_container_width=True):
+                st.session_state.dark_mode = True
+                st.rerun()
         
         # ダークモード用のスクリプト
         if st.session_state.dark_mode:
@@ -555,10 +561,86 @@ def show_main_app():
                 background-color: #0f0f23 !important;
             }
             
-            /* サイドバー */
-            [data-testid="stSidebar"], [data-testid="stSidebar"] > div {
+            /* サイドバー - 完全対応 */
+            [data-testid="stSidebar"], 
+            [data-testid="stSidebar"] > div,
+            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
                 background-color: #1a1a2e !important;
+            }
+            [data-testid="stSidebar"] {
                 border-right: 1px solid #2a2a4a !important;
+            }
+            
+            /* サイドバー内のテキスト */
+            [data-testid="stSidebar"] .stMarkdown,
+            [data-testid="stSidebar"] p,
+            [data-testid="stSidebar"] span,
+            [data-testid="stSidebar"] label,
+            [data-testid="stSidebar"] h1,
+            [data-testid="stSidebar"] h2,
+            [data-testid="stSidebar"] h3,
+            [data-testid="stSidebar"] h4,
+            [data-testid="stSidebar"] h5 {
+                color: #f0f0f5 !important;
+            }
+            
+            /* サイドバーの入力欄 */
+            [data-testid="stSidebar"] input,
+            [data-testid="stSidebar"] textarea,
+            [data-testid="stSidebar"] [data-baseweb="input"],
+            [data-testid="stSidebar"] [data-baseweb="textarea"] {
+                background-color: #0f0f23 !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
+            }
+            
+            /* サイドバーのボタン */
+            [data-testid="stSidebar"] .stButton > button {
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #3a3a5a !important;
+            }
+            [data-testid="stSidebar"] .stButton > button:hover {
+                background-color: #3a3a5a !important;
+            }
+            
+            /* サイドバーの成功/警告メッセージ */
+            [data-testid="stSidebar"] .stAlert,
+            [data-testid="stSidebar"] [data-testid="stNotification"] {
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #3a3a5a !important;
+            }
+            [data-testid="stSidebar"] .stSuccess {
+                background-color: rgba(102, 187, 106, 0.15) !important;
+                border-left: 3px solid #66bb6a !important;
+            }
+            [data-testid="stSidebar"] .stWarning {
+                background-color: rgba(255, 183, 77, 0.15) !important;
+                border-left: 3px solid #ffb74d !important;
+            }
+            
+            /* サイドバーのエクスパンダー */
+            [data-testid="stSidebar"] .streamlit-expanderHeader {
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #3a3a5a !important;
+            }
+            [data-testid="stSidebar"] .streamlit-expanderContent {
+                background-color: #1a1a2e !important;
+                border: 1px solid #2a2a4a !important;
+            }
+            
+            /* サイドバーの区切り線 */
+            [data-testid="stSidebar"] hr {
+                border-color: #2a2a4a !important;
+            }
+            
+            /* ナンバーインプット */
+            [data-testid="stSidebar"] [data-testid="stNumberInput"] button {
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #3a3a5a !important;
             }
             
             /* 全テキスト */
