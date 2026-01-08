@@ -4,6 +4,7 @@ AIを活用した穴埋め式フラッシュカードアプリ。Gemini APIで�
 
 ## 機能
 
+### 基本機能
 - **AI穴埋め生成** - テキストを貼り付けるだけでAIが自動で穴埋め問題を生成
 - **SM-2復習システム** - 科学的な復習スケジュールで効率的に暗記
 - **本日のノルマ機能** - 1日の復習上限を設定（デフォルト15枚）
@@ -11,6 +12,14 @@ AIを活用した穴埋め式フラッシュカードアプリ。Gemini APIで�
 - **原文カード保存** - 穴埋めカードの元テキストを別途保存・レビュー可能
 - **マルチユーザー対応** - ユーザー登録・ログイン、自動ログイン（30日間）
 - **クラウド保存** - Supabase（PostgreSQL）によるデータ永続化
+
+### 新機能（v2.0）
+- **📊 統計ダッシュボード** - 学習進捗の可視化（習得率、カテゴリ別統計）
+- **📦 エクスポート/インポート** - JSON/CSV形式でデータバックアップ・移行
+- **⭐ お気に入り機能** - 重要なカードにスターを付けて管理
+- **🔊 音声読み上げ** - カードと原文を音声で確認（Web Speech API）
+- **🌙 ダークモード** - 目に優しいダークテーマ
+- **📱 モバイル対応強化** - スマホでも快適に操作
 
 ---
 
@@ -55,12 +64,16 @@ SUPABASE_KEY = "eyJ..."
 ```
 memorization_app/
 ├── app.py              # メインアプリケーション
-├── auth.py             # ユーザー認証・セッション管理・ノルマ設定
+├── auth.py             # ユーザー認証・セッション管理（bcrypt対応）
 ├── storage.py          # カード・原文カードデータ管理
-├── database.py         # Supabase接続
+├── database.py         # Supabase接続（リトライ機能付き）
 ├── gemini_client.py    # Gemini API連携
 ├── utils.py            # SM-2アルゴリズム・ハイブリッド最適化
+├── stats.py            # 学習統計計算・表示
+├── export_import.py    # エクスポート/インポート機能
 ├── requirements.txt    # 依存関係
+├── USER_GUIDE.md       # ユーザーガイド
+├── HELP_AI_CONTEXT.md  # ヘルプAI用コンテキスト
 └── .gitignore
 ```
 
@@ -73,8 +86,9 @@ memorization_app/
 |--------|-----|------|
 | id | UUID | ユーザーID |
 | username | TEXT | ユーザー名 |
-| password_hash | TEXT | パスワード（ハッシュ） |
+| password_hash | TEXT | パスワード（bcryptハッシュ） |
 | api_key | TEXT | Gemini APIキー |
+| daily_quota_limit | INT | 1日のノルマ上限 |
 | created_at | TIMESTAMP | 登録日時 |
 
 ### cards テーブル
@@ -90,10 +104,11 @@ memorization_app/
 | interval | INT | 復習間隔（日） |
 | repetitions | INT | 連続正解回数 |
 | next_review | DATE | 次回復習日 |
-| **source_id** | UUID | 原文カードへの参照 |
-| **blank_count** | INT | 穴埋め箇所数 |
+| source_id | UUID | 原文カードへの参照 |
+| blank_count | INT | 穴埋め箇所数 |
+| **is_favorite** | BOOL | お気に入りフラグ（新規） |
 
-### source_cards テーブル（新規）
+### source_cards テーブル
 | カラム | 型 | 説明 |
 |--------|-----|------|
 | id | UUID | 原文カードID |
