@@ -604,31 +604,38 @@ def show_main_app():
                 background-color: #3a3a5a !important;
             }
             
-            /* サイドバーの成功/警告メッセージ */
+            /* サイドバーの成功/警告メッセージ - 完全対応 */
             [data-testid="stSidebar"] .stAlert,
-            [data-testid="stSidebar"] [data-testid="stNotification"] {
+            [data-testid="stSidebar"] [data-testid="stNotification"],
+            [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"],
+            [data-testid="stSidebar"] [data-testid="stAlertContentWarning"],
+            [data-testid="stSidebar"] [role="alert"] {
                 background-color: #2a2a4a !important;
                 color: #f0f0f5 !important;
-                border: 1px solid #3a3a5a !important;
+                border: none !important;
+                box-shadow: none !important;
             }
-            [data-testid="stSidebar"] .stSuccess {
-                background-color: rgba(102, 187, 106, 0.15) !important;
-                border-left: 3px solid #66bb6a !important;
+            [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"] {
+                background-color: rgba(102, 187, 106, 0.2) !important;
             }
-            [data-testid="stSidebar"] .stWarning {
-                background-color: rgba(255, 183, 77, 0.15) !important;
-                border-left: 3px solid #ffb74d !important;
+            [data-testid="stSidebar"] [data-testid="stAlertContentWarning"] {
+                background-color: rgba(255, 183, 77, 0.2) !important;
             }
             
-            /* サイドバーのエクスパンダー */
-            [data-testid="stSidebar"] .streamlit-expanderHeader {
+            /* サイドバーのエクスパンダー - 完全対応 */
+            [data-testid="stSidebar"] .streamlit-expanderHeader,
+            [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+            [data-testid="stSidebar"] details summary {
                 background-color: #2a2a4a !important;
                 color: #f0f0f5 !important;
-                border: 1px solid #3a3a5a !important;
+                border: none !important;
+                box-shadow: none !important;
             }
-            [data-testid="stSidebar"] .streamlit-expanderContent {
+            [data-testid="stSidebar"] .streamlit-expanderContent,
+            [data-testid="stSidebar"] [data-testid="stExpander"] > div,
+            [data-testid="stSidebar"] details > div {
                 background-color: #1a1a2e !important;
-                border: 1px solid #2a2a4a !important;
+                border: none !important;
             }
             
             /* サイドバーの区切り線 */
@@ -636,11 +643,52 @@ def show_main_app():
                 border-color: #2a2a4a !important;
             }
             
-            /* ナンバーインプット */
+            /* ナンバーインプット - 完全対応 */
+            [data-testid="stSidebar"] [data-testid="stNumberInput"],
+            [data-testid="stSidebar"] [data-testid="stNumberInput"] > div {
+                background-color: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stNumberInput"] input {
+                background-color: #0f0f23 !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
+            }
             [data-testid="stSidebar"] [data-testid="stNumberInput"] button {
                 background-color: #2a2a4a !important;
                 color: #f0f0f5 !important;
                 border: 1px solid #3a3a5a !important;
+            }
+            
+            /* サイドバーのテキストエリア - 完全対応 */
+            [data-testid="stSidebar"] [data-testid="stChatInput"],
+            [data-testid="stSidebar"] [data-testid="stChatInput"] > div,
+            [data-testid="stSidebar"] .stChatInput,
+            [data-testid="stSidebar"] [data-baseweb="base-input"] {
+                background-color: #0f0f23 !important;
+                border: 1px solid #2a2a4a !important;
+                box-shadow: none !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stChatInput"] textarea,
+            [data-testid="stSidebar"] .stChatInputContainer textarea {
+                background-color: #0f0f23 !important;
+                color: #f0f0f5 !important;
+                border: none !important;
+            }
+            
+            /* サイドバーのすべてのdiv背景をリセット */
+            [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
+            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div {
+                background-color: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            
+            /* チャット送信ボタン */
+            [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] {
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
             }
             
             /* 全テキスト */
