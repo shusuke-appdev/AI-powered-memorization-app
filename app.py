@@ -79,6 +79,7 @@ st.markdown("""
         font-weight: 600;
         color: #1f2937;
         margin-bottom: 20px;
+        padding-top: 40px;
     }
 
     .flashcard-answer {
