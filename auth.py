@@ -4,14 +4,35 @@
 """
 import hashlib
 import uuid
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from database import get_supabase
 
 SESSION_EXPIRY_DAYS = 30
 
-def hash_password(password):
-    """パスワードをSHA-256でハッシュ化"""
+def hash_password_bcrypt(password):
+    """パスワードをbcryptでハッシュ化（推奨）"""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password_bcrypt(password, hashed):
+    """bcryptでパスワードを検証"""
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except Exception:
+        return False
+
+def hash_password_sha256(password):
+    """パスワードをSHA-256でハッシュ化（レガシー・マイグレーション用）"""
     return hashlib.sha256(password.encode()).hexdigest()
+
+def is_bcrypt_hash(hash_str):
+    """bcryptハッシュかどうかを判定"""
+    return hash_str.startswith('$2b$') or hash_str.startswith('$2a$')
+
+# 後方互換性のため
+def hash_password(password):
+    """パスワードをハッシュ化（新規はbcrypt）"""
+    return hash_password_bcrypt(password)
 
 def generate_session_token():
     """ランダムなセッショントークンを生成"""
@@ -42,10 +63,10 @@ def register_user(username, password, api_key=""):
     if existing.data:
         return False, "このユーザー名は既に使用されています", None
     
-    # 新規ユーザー作成
+    # 新規ユーザー作成（bcryptでハッシュ化）
     result = supabase.table("users").insert({
         "username": username,
-        "password_hash": hash_password(password),
+        "password_hash": hash_password_bcrypt(password),
         "api_key": api_key
     }).execute()
     
@@ -57,7 +78,7 @@ def register_user(username, password, api_key=""):
 
 def authenticate_user(username, password):
     """
-    ユーザー認証
+    ユーザー認証（bcryptとSHA-256の両方に対応・自動マイグレーション）
     
     Returns:
         tuple: (success: bool, message: str, user_id: str or None)
@@ -66,7 +87,6 @@ def authenticate_user(username, password):
         return False, "ユーザー名とパスワードを入力してください", None
     
     supabase = get_supabase()
-    password_hash = hash_password(password)
     
     result = supabase.table("users").select("id, password_hash").ilike("username", username).execute()
     
@@ -74,10 +94,26 @@ def authenticate_user(username, password):
         return False, "ユーザーが見つかりません", None
     
     user = result.data[0]
-    if user["password_hash"] == password_hash:
-        return True, "ログイン成功", user["id"]
+    stored_hash = user["password_hash"]
+    user_id = user["id"]
+    
+    # bcryptハッシュかSHA-256ハッシュかを判定
+    if is_bcrypt_hash(stored_hash):
+        # bcryptで検証
+        if verify_password_bcrypt(password, stored_hash):
+            return True, "ログイン成功", user_id
+        else:
+            return False, "パスワードが正しくありません", None
     else:
-        return False, "パスワードが正しくありません", None
+        # SHA-256（レガシー）で検証
+        sha256_hash = hash_password_sha256(password)
+        if stored_hash == sha256_hash:
+            # 認証成功 → bcryptにマイグレーション
+            new_hash = hash_password_bcrypt(password)
+            supabase.table("users").update({"password_hash": new_hash}).eq("id", user_id).execute()
+            return True, "ログイン成功", user_id
+        else:
+            return False, "パスワードが正しくありません", None
 
 def get_username(user_id):
     """ユーザーIDからユーザー名を取得（セッションキャッシュ付き）"""

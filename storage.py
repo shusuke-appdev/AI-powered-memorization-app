@@ -34,7 +34,8 @@ def _load_cards_cached(user_id):
             "repetitions": row.get("repetitions", 0),
             "next_review": row.get("next_review", date.today().isoformat()),
             "source_id": row.get("source_id"),
-            "blank_count": row.get("blank_count", 1)
+            "blank_count": row.get("blank_count", 1),
+            "is_favorite": row.get("is_favorite", False)
         })
     
     return cards
@@ -92,12 +93,16 @@ def add_source_card(user_id, source_text, title="", category="その他"):
         "category": category
     }).execute()
     
+    # キャッシュをクリア
+    clear_source_cards_cache(user_id)
+    
     if result.data:
         return result.data[0]["id"]
     return None
 
-def load_source_cards(user_id):
-    """原文カードを読み込む"""
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
+def _load_source_cards_cached(user_id):
+    """キャッシュ付きで原文カードを読み込む（内部用）"""
     supabase = get_supabase()
     
     result = supabase.table("source_cards").select("*").eq("user_id", user_id).execute()
@@ -106,6 +111,14 @@ def load_source_cards(user_id):
         return []
     
     return result.data
+
+def load_source_cards(user_id):
+    """原文カードを読み込む"""
+    return _load_source_cards_cached(user_id)
+
+def clear_source_cards_cache(user_id=None):
+    """原文カードのキャッシュをクリア"""
+    _load_source_cards_cached.clear()
 
 def get_source_card(source_id):
     """特定の原文カードを取得"""
@@ -133,6 +146,9 @@ def delete_source_card(user_id, source_id):
     supabase = get_supabase()
     
     supabase.table("source_cards").delete().eq("id", source_id).eq("user_id", user_id).execute()
+    
+    # キャッシュをクリア
+    clear_source_cards_cache(user_id)
 
 def update_card_progress(user_id, card_id, stats):
     """カードの学習進捗を更新"""
@@ -173,10 +189,30 @@ def delete_card(user_id, card_id):
 
 def delete_cards_batch(user_id, card_ids):
     """複数のカードを一括削除"""
+    if not card_ids:
+        return
+    
     supabase = get_supabase()
     
-    for card_id in card_ids:
-        supabase.table("cards").delete().eq("id", card_id).eq("user_id", user_id).execute()
+    # in_演算子で一括削除（パフォーマンス最適化）
+    supabase.table("cards").delete().in_("id", card_ids).eq("user_id", user_id).execute()
     
     # キャッシュをクリア
     clear_cards_cache(user_id)
+
+def toggle_favorite(user_id, card_id, is_favorite):
+    """カードのお気に入り状態をトグル"""
+    supabase = get_supabase()
+    
+    supabase.table("cards").update({
+        "is_favorite": is_favorite
+    }).eq("id", card_id).eq("user_id", user_id).execute()
+    
+    # キャッシュをクリア
+    clear_cards_cache(user_id)
+
+def get_favorite_cards(user_id):
+    """お気に入りカードのみを取得"""
+    cards = load_cards(user_id)
+    return [c for c in cards if c.get("is_favorite", False)]
+

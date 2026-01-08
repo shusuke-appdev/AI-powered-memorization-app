@@ -2,9 +2,12 @@ import streamlit as st
 import datetime
 import os
 from gemini_client import generate_flashcards, help_chat
-from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card
+from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card, toggle_favorite
 from utils import calculate_next_review, select_hybrid_quota
 from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key, get_daily_quota_limit, update_daily_quota_limit
+from database import DatabaseConnectionError
+from stats import calculate_statistics, render_statistics_ui
+from export_import import render_export_import_ui
 from streamlit_cookies_controller import CookieController
 
 # Page Config
@@ -17,27 +20,50 @@ st.set_page_config(
 # Cookie Controller
 cookie_controller = CookieController()
 
-# Custom CSS
+# Custom CSS with Dark Mode support
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+    /* CSS Variables for theming */
+    :root {
+        --bg-primary: #f8f9fa;
+        --bg-card: #ffffff;
+        --text-primary: #1f2937;
+        --text-secondary: #6b7280;
+        --accent-color: #10b981;
+        --accent-hover: #059669;
+        --border-color: #eaeaea;
+        --shadow-color: rgba(0,0,0,0.05);
+    }
+    
+    [data-theme="dark"] {
+        --bg-primary: #1a1a2e;
+        --bg-card: #16213e;
+        --text-primary: #e5e5e5;
+        --text-secondary: #a0a0a0;
+        --accent-color: #00d9a5;
+        --accent-hover: #00b894;
+        --border-color: #2d3748;
+        --shadow-color: rgba(0,0,0,0.3);
+    }
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
 
     .stApp {
-        background-color: #f8f9fa;
+        background-color: var(--bg-primary);
     }
 
     .flashcard {
-        background-color: white;
+        background-color: var(--bg-card);
         padding: 40px;
         border-radius: 20px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        box-shadow: 0 10px 25px var(--shadow-color);
         text-align: center;
         margin-bottom: 30px;
-        border: 1px solid #eaeaea;
+        border: 1px solid var(--border-color);
         transition: transform 0.2s;
         position: relative;
     }
@@ -77,7 +103,7 @@ st.markdown("""
     .flashcard-question {
         font-size: 24px;
         font-weight: 600;
-        color: #1f2937;
+        color: var(--text-primary);
         margin-bottom: 20px;
         padding-top: 40px;
     }
@@ -262,6 +288,26 @@ st.markdown("""
     }
 
 </style>
+""", unsafe_allow_html=True)
+
+# JavaScript for Text-to-Speech
+st.markdown("""
+<script>
+function speakText(text) {
+    if ('speechSynthesis' in window) {
+        // 既存の読み上げをキャンセル
+        speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        speechSynthesis.speak(utterance);
+    } else {
+        alert('お使いのブラウザは音声読み上げに対応していません。');
+    }
+}
+</script>
 """, unsafe_allow_html=True)
 
 # ============ 認証処理 ============
@@ -465,9 +511,54 @@ def show_main_app():
     </style>
     """, unsafe_allow_html=True)
     
+    # Mobile responsive CSS
+    st.markdown("""
+    <style>
+    @media (max-width: 768px) {
+        .flashcard { padding: 20px; margin-bottom: 15px; }
+        .flashcard-question { font-size: 18px; padding-top: 35px; }
+        .flashcard-title { font-size: 12px; }
+        .stButton button { min-height: 48px; font-size: 16px; }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     with st.sidebar:
         # ユーザー情報セクション（最上部）
         st.markdown(f"### 👤 {username} さん")
+        
+        # ダークモードトグル
+        if "dark_mode" not in st.session_state:
+            st.session_state.dark_mode = False
+        
+        dark_mode = st.checkbox("🌙 ダークモード", value=st.session_state.dark_mode, key="dark_mode_toggle")
+        if dark_mode != st.session_state.dark_mode:
+            st.session_state.dark_mode = dark_mode
+            st.rerun()
+        
+        # ダークモード用のスクリプト
+        if st.session_state.dark_mode:
+            st.markdown("""
+            <script>
+            document.documentElement.setAttribute('data-theme', 'dark');
+            </script>
+            <style>
+            .stApp, .main, [data-testid="stAppViewContainer"] {
+                background-color: #1a1a2e !important;
+            }
+            .stMarkdown, p, span, div, h1, h2, h3, h4, h5, h6, label {
+                color: #e5e5e5 !important;
+            }
+            .flashcard {
+                background-color: #16213e !important;
+                border-color: #2d3748 !important;
+            }
+            .flashcard-question, .flashcard-answer {
+                color: #e5e5e5 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+        
         st.markdown("---")
         
         # APIキー設定セクション（コンパクト）
@@ -577,7 +668,7 @@ def show_main_app():
     st.title("🧠 AI 暗記カード")
     
     # Tab Navigation
-    tab1, tab2, tab3 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🗂️ カード管理"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🗂️ カード管理", "📊 統計"])
 
     # Review Page
     with tab1:
@@ -665,6 +756,28 @@ def show_main_app():
                     </div>
                     """, unsafe_allow_html=True)
                     
+                    # 読み上げボタン（個別 + 一括）
+                    speak_col1, speak_col2 = st.columns(2)
+                    with speak_col1:
+                        current_text = current_source.get("source_text", "").replace("'", "\\'")
+                        st.markdown(f"""
+                        <button onclick="speakText('{current_text}');" 
+                                style="width:100%; padding:10px; border-radius:8px; border:1px solid #e5e7eb; 
+                                       background:#fff; cursor:pointer; font-size:14px;">
+                            🔊 この原文を読み上げ
+                        </button>
+                        """, unsafe_allow_html=True)
+                    with speak_col2:
+                        # 全原文を連結
+                        all_texts = " ... ".join([sc.get("source_text", "").replace("'", "\\'") for sc in source_cards])
+                        st.markdown(f"""
+                        <button onclick="speakText('{all_texts}');" 
+                                style="width:100%; padding:10px; border-radius:8px; border:1px solid #10b981; 
+                                       background:#d1fae5; cursor:pointer; font-size:14px; font-weight:bold;">
+                            🔊 すべて読み上げ ({len(source_cards)}件)
+                        </button>
+                        """, unsafe_allow_html=True)
+                    
                     # ナビゲーション
                     nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
                     with nav_col1:
@@ -714,6 +827,25 @@ def show_main_app():
                 {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) else ''}
             </div>
             """, unsafe_allow_html=True)
+            
+            # Favorite and Speak buttons
+            is_fav = current_card.get("is_favorite", False)
+            btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
+            with btn_col1:
+                fav_label = "⭐ お気に入り" if is_fav else "☆ お気に入り"
+                if st.button(fav_label, key=f"fav_{current_card['id']}", use_container_width=True):
+                    toggle_favorite(user_id, current_card['id'], not is_fav)
+                    st.rerun()
+            with btn_col2:
+                # 読み上げボタン（JavaScript経由）
+                speak_text = current_card['question'].replace("______", "空欄")
+                st.markdown(f"""
+                <button onclick="speakText('{speak_text.replace("'", "\\'")}');" 
+                        style="width:100%; padding:8px; border-radius:8px; border:1px solid #e5e7eb; 
+                               background:#fff; cursor:pointer; font-size:14px;">
+                    🔊 読み上げ
+                </button>
+                """, unsafe_allow_html=True)
             
             # Controls
             if not st.session_state.get("show_answer", False):
@@ -1220,9 +1352,41 @@ def show_main_app():
                                         st.success("削除しました")
                                         st.rerun()
 
+    # Statistics Page
+    with tab4:
+        st.title("📊 統計・データ管理")
+        
+        # データを読み込み
+        all_cards = load_cards(user_id)
+        all_source_cards = load_source_cards(user_id)
+        
+        # 統計セクション
+        st.subheader("📈 学習統計")
+        stats = calculate_statistics(all_cards, all_source_cards)
+        render_statistics_ui(stats, st)
+        
+        st.markdown("---")
+        
+        # エクスポート/インポートセクション
+        render_export_import_ui(user_id, all_cards, all_source_cards, st, add_card, add_source_card)
+
 # ============ アプリケーション実行 ============
 
-if check_auth():
-    show_main_app()
-else:
-    show_login_page()
+try:
+    if check_auth():
+        show_main_app()
+    else:
+        show_login_page()
+except DatabaseConnectionError as e:
+    st.error(f"⚠️ {e.message}")
+    st.info("🔄 ページを再読み込みしてください。問題が続く場合は、しばらく待ってから再試行してください。")
+    if st.button("再読み込み"):
+        from database import reset_connection
+        reset_connection()
+        st.rerun()
+except Exception as e:
+    st.error("予期しないエラーが発生しました。")
+    st.info("🔄 ページを再読み込みするか、サポートにお問い合わせください。")
+    if st.button("再読み込み"):
+        st.rerun()
+
