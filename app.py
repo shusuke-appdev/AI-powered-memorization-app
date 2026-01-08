@@ -543,18 +543,121 @@ def show_main_app():
             document.documentElement.setAttribute('data-theme', 'dark');
             </script>
             <style>
-            .stApp, .main, [data-testid="stAppViewContainer"] {
+            /* ダークモード - 基本背景 */
+            .stApp, .main, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
                 background-color: #1a1a2e !important;
             }
-            .stMarkdown, p, span, div, h1, h2, h3, h4, h5, h6, label {
+            
+            /* サイドバー */
+            [data-testid="stSidebar"], [data-testid="stSidebar"] > div {
+                background-color: #16213e !important;
+            }
+            
+            /* 全テキスト */
+            .stMarkdown, p, span, div, h1, h2, h3, h4, h5, h6, label, li, td, th {
                 color: #e5e5e5 !important;
             }
+            
+            /* タブ */
+            .stTabs [data-baseweb="tab-list"] {
+                background-color: #16213e !important;
+                border-radius: 10px;
+            }
+            .stTabs [data-baseweb="tab"] {
+                color: #a0aec0 !important;
+                background-color: transparent !important;
+            }
+            .stTabs [aria-selected="true"] {
+                color: #00d9a5 !important;
+                background-color: #1a1a2e !important;
+            }
+            
+            /* ボタン */
+            .stButton > button {
+                background-color: #2d3748 !important;
+                color: #e5e5e5 !important;
+                border-color: #4a5568 !important;
+            }
+            .stButton > button:hover {
+                background-color: #4a5568 !important;
+                border-color: #00d9a5 !important;
+            }
+            .stButton > button[kind="primary"] {
+                background-color: #00d9a5 !important;
+                color: #1a1a2e !important;
+            }
+            
+            /* 入力欄 */
+            .stTextInput > div > div > input,
+            .stTextArea > div > div > textarea,
+            .stNumberInput > div > div > input,
+            .stSelectbox > div > div,
+            [data-baseweb="select"] > div {
+                background-color: #2d3748 !important;
+                color: #e5e5e5 !important;
+                border-color: #4a5568 !important;
+            }
+            
+            /* エクスパンダー */
+            .streamlit-expanderHeader {
+                background-color: #2d3748 !important;
+                color: #e5e5e5 !important;
+            }
+            .streamlit-expanderContent {
+                background-color: #16213e !important;
+            }
+            
+            /* フラッシュカード */
             .flashcard {
                 background-color: #16213e !important;
                 border-color: #2d3748 !important;
             }
             .flashcard-question, .flashcard-answer {
                 color: #e5e5e5 !important;
+            }
+            .flashcard-title {
+                background-color: #065f46 !important;
+                color: #d1fae5 !important;
+                border-color: #00d9a5 !important;
+            }
+            .flashcard-category {
+                background-color: #2d3748 !important;
+                color: #a0aec0 !important;
+            }
+            
+            /* メトリクス */
+            [data-testid="stMetricValue"] {
+                color: #00d9a5 !important;
+            }
+            [data-testid="stMetricLabel"] {
+                color: #a0aec0 !important;
+            }
+            
+            /* アラート・メッセージ */
+            .stAlert {
+                background-color: #2d3748 !important;
+                color: #e5e5e5 !important;
+            }
+            
+            /* プログレスバー */
+            .stProgress > div > div {
+                background-color: #4a5568 !important;
+            }
+            .stProgress > div > div > div {
+                background-color: #00d9a5 !important;
+            }
+            
+            /* チェックボックス・ラジオ */
+            .stCheckbox label, .stRadio label {
+                color: #e5e5e5 !important;
+            }
+            
+            /* テーブル */
+            .stDataFrame, table {
+                background-color: #16213e !important;
+            }
+            th {
+                background-color: #2d3748 !important;
             }
             </style>
             """, unsafe_allow_html=True)
