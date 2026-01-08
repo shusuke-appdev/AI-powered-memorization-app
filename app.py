@@ -556,98 +556,127 @@ def show_main_app():
              * アクセント: #6c5ce7 (紫、控えめに)
              */
             
-            /* 基本背景 */
+            /* 基本背景 - ダークグレー */
             .stApp, .main, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-                background-color: #0f0f23 !important;
+                background-color: #2d2d3d !important;
             }
             
-            /* サイドバー - ブランケットリセット（すべての白を除去） */
+            /* サイドバー - 明るい白（統一色） */
             [data-testid="stSidebar"],
-            [data-testid="stSidebar"] * {
+            [data-testid="stSidebar"] > div,
+            section[data-testid="stSidebar"],
+            .stSidebar {
+                background: #f4f4f8 !important;
+                border-right: 1px solid #d0d0d8 !important;
+            }
+            
+            /* サイドバーのコンテンツ領域 */
+            [data-testid="stSidebarContent"],
+            [data-testid="stSidebarUserContent"] {
+                background: #f4f4f8 !important;
+                color: #333333 !important;
+            }
+
+            /* リサイズハンドル */
+            [data-testid="stSidebar"]::after {
+                background-color: #d0d0d8 !important;
+            }
+
+            /* サイドバー内のコンテナ背景を透明化 */
+            [data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+            [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
+            [data-testid="stSidebar"] [data-testid="element-container"],
+            [data-testid="stSidebar"] .element-container,
+            [data-testid="stSidebar"] .stMarkdown {
                 background-color: transparent !important;
-                border-color: #2a2a4a !important;
-                box-shadow: none !important;
             }
             
-            /* サイドバーのベース背景だけ設定 */
-            [data-testid="stSidebar"] > div:first-child {
-                background-color: #1a1a2e !important;
-            }
-            [data-testid="stSidebar"] {
-                border-right: 1px solid #2a2a4a !important;
-                background-color: #1a1a2e !important;
+            /* サイドバー内のテキスト - 濃いグレー */
+            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, 
+            [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4,
+            [data-testid="stSidebar"] h5, [data-testid="stSidebar"] p,
+            [data-testid="stSidebar"] span, [data-testid="stSidebar"] label,
+            [data-testid="stSidebar"] div, [data-testid="stSidebar"] .stMarkdown {
+                color: #333333 !important;
             }
             
-            /* サイドバー内のテキスト */
-            [data-testid="stSidebar"] .stMarkdown,
-            [data-testid="stSidebar"] p,
-            [data-testid="stSidebar"] span,
-            [data-testid="stSidebar"] label,
-            [data-testid="stSidebar"] h1,
-            [data-testid="stSidebar"] h2,
+            /* ヘルプAIのメッセージ - 一色統一 */
+            [data-testid="stSidebar"] .chat-message {
+                border: 1px solid #d0d0d8 !important;
+                color: #333333 !important;
+                background: #f4f4f8 !important;
+            }
+            [data-testid="stSidebar"] .chat-message.user {
+                background: #f4f4f8 !important;
+                border-left: 3px solid #888899 !important;
+                color: #333333 !important;
+            }
+            [data-testid="stSidebar"] .chat-message.assistant {
+                background: #f4f4f8 !important; 
+                border-left: 3px solid #6c5ce7 !important;
+                color: #333333 !important;
+            }
             [data-testid="stSidebar"] h3,
             [data-testid="stSidebar"] h4,
             [data-testid="stSidebar"] h5 {
-                color: #f0f0f5 !important;
+                color: #333333 !important;
             }
             
-            /* サイドバーの入力欄 */
+            /* サイドバーの入力欄 - 明るい白テーマ */
             [data-testid="stSidebar"] input,
             [data-testid="stSidebar"] textarea,
             [data-testid="stSidebar"] [data-baseweb="input"],
             [data-testid="stSidebar"] [data-baseweb="textarea"] {
-                background-color: #0f0f23 !important;
-                color: #f0f0f5 !important;
-                border: 1px solid #2a2a4a !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
             }
             
-            /* サイドバーのボタン */
+            /* サイドバーのボタン - 一色統一 */
             [data-testid="stSidebar"] .stButton > button {
-                background-color: #2a2a4a !important;
-                color: #f0f0f5 !important;
-                border: 1px solid #3a3a5a !important;
-            }
-            [data-testid="stSidebar"] .stButton > button:hover {
-                background-color: #3a3a5a !important;
-            }
-            
-            /* サイドバーの成功/警告メッセージ - 完全対応 */
-            [data-testid="stSidebar"] .stAlert,
-            [data-testid="stSidebar"] [data-testid="stNotification"],
-            [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"],
-            [data-testid="stSidebar"] [data-testid="stAlertContentWarning"],
-            [data-testid="stSidebar"] [role="alert"] {
-                background-color: #2a2a4a !important;
-                color: #f0f0f5 !important;
-                border: none !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
                 box-shadow: none !important;
             }
-            [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"] {
-                background-color: rgba(102, 187, 106, 0.2) !important;
-            }
-            [data-testid="stSidebar"] [data-testid="stAlertContentWarning"] {
-                background-color: rgba(255, 183, 77, 0.2) !important;
+            [data-testid="stSidebar"] .stButton > button:hover {
+                background-color: #e4e4e8 !important;
             }
             
-            /* サイドバーのエクスパンダー - 完全対応 */
+            /* サイドバーのアラート - 一色統一 */
+            [data-testid="stSidebar"] .stAlert,
+            [data-testid="stSidebar"] [data-testid="stNotification"],
+            [data-testid="stSidebar"] [role="alert"],
+            [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"],
+            [data-testid="stSidebar"] [data-testid="stAlertContentWarning"] {
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
+                box-shadow: none !important;
+            }
+            
+            /* サイドバーのエクスパンダー - 一色統一 */
             [data-testid="stSidebar"] .streamlit-expanderHeader,
             [data-testid="stSidebar"] [data-testid="stExpander"] summary,
             [data-testid="stSidebar"] details summary {
-                background-color: #2a2a4a !important;
-                color: #f0f0f5 !important;
-                border: none !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
                 box-shadow: none !important;
             }
             [data-testid="stSidebar"] .streamlit-expanderContent,
             [data-testid="stSidebar"] [data-testid="stExpander"] > div,
             [data-testid="stSidebar"] details > div {
-                background-color: #1a1a2e !important;
-                border: none !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
+                border-top: none !important;
             }
             
             /* サイドバーの区切り線 */
             [data-testid="stSidebar"] hr {
-                border-color: #2a2a4a !important;
+                border-color: #d0d0d8 !important;
             }
             
             /* ナンバーインプット - 完全対応 */
@@ -657,31 +686,60 @@ def show_main_app():
                 border: none !important;
                 box-shadow: none !important;
             }
+            /* ナンバーインプット - 明るい白テーマ */
             [data-testid="stSidebar"] [data-testid="stNumberInput"] input {
-                background-color: #0f0f23 !important;
-                color: #f0f0f5 !important;
-                border: 1px solid #2a2a4a !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
+                caret-color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
             }
             [data-testid="stSidebar"] [data-testid="stNumberInput"] button {
-                background-color: #2a2a4a !important;
-                color: #f0f0f5 !important;
-                border: 1px solid #3a3a5a !important;
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
+            }
+            /* SVGアイコンの色 - 濃いグレー */
+            [data-testid="stSidebar"] [data-testid="stNumberInput"] button svg {
+                fill: #333333 !important;
+                color: #333333 !important;
+            }
+
+            /* サイドバーナビゲーション背景 */
+            [data-testid="stSidebarNav"] {
+                background-color: #f4f4f8 !important;
             }
             
-            /* サイドバーのテキストエリア - 完全対応 */
+            /* チャット入力エリア - 明るい白テーマ */
             [data-testid="stSidebar"] [data-testid="stChatInput"],
             [data-testid="stSidebar"] [data-testid="stChatInput"] > div,
             [data-testid="stSidebar"] .stChatInput,
-            [data-testid="stSidebar"] [data-baseweb="base-input"] {
-                background-color: #0f0f23 !important;
-                border: 1px solid #2a2a4a !important;
+            [data-testid="stSidebar"] [data-baseweb="base-input"],
+            [data-testid="stSidebar"] div[data-baseweb="input"] {
+                background-color: #f4f4f8 !important;
+                background: #f4f4f8 !important;
+                border: 1px solid #d0d0d8 !important;
                 box-shadow: none !important;
             }
             [data-testid="stSidebar"] [data-testid="stChatInput"] textarea,
-            [data-testid="stSidebar"] .stChatInputContainer textarea {
-                background-color: #0f0f23 !important;
-                color: #f0f0f5 !important;
+            [data-testid="stSidebar"] .stChatInputContainer textarea,
+            [data-testid="stSidebar"] textarea {
+                background-color: #f4f4f8 !important;
+                background: #f4f4f8 !important;
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
+                caret-color: #333333 !important;
                 border: none !important;
+            }
+
+            /* テキスト入力（APIキー設定など） */
+            [data-testid="stSidebar"] [data-testid="stTextInput"] input,
+            [data-testid="stSidebar"] [data-baseweb="input"] {
+                background-color: #f4f4f8 !important;
+                background: #f4f4f8 !important;
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
+                border: 1px solid #d0d0d8 !important;
             }
             
             /* サイドバーのすべてのdiv背景をリセット */
@@ -692,15 +750,38 @@ def show_main_app():
                 box-shadow: none !important;
             }
             
-            /* チャット送信ボタン */
-            [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] {
-                background-color: #2a2a4a !important;
-                color: #f0f0f5 !important;
+            /* チャット送信ボタン - アクセントカラー */
+            [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"],
+            [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] button {
+                background-color: #6c5ce7 !important; /* 目立つ色に */
+                color: #ffffff !important;
+                border: none !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] svg {
+                fill: #ffffff !important;
+                color: #ffffff !important;
             }
             
-            /* 全テキスト */
+            /* 全テキスト - サイドバー内は黒、それ以外は白 */
             .stMarkdown, p, span, div, h1, h2, h3, h4, h5, h6, label, li, td, th {
                 color: #f0f0f5 !important;
+            }
+            [data-testid="stSidebar"] .stMarkdown, 
+            [data-testid="stSidebar"] p, 
+            [data-testid="stSidebar"] span, 
+            [data-testid="stSidebar"] div, 
+            [data-testid="stSidebar"] h1, 
+            [data-testid="stSidebar"] h2, 
+            [data-testid="stSidebar"] h3, 
+            [data-testid="stSidebar"] h4, 
+            [data-testid="stSidebar"] h5, 
+            [data-testid="stSidebar"] h6, 
+            [data-testid="stSidebar"] label, 
+            [data-testid="stSidebar"] li, 
+            [data-testid="stSidebar"] td, 
+            [data-testid="stSidebar"] th {
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
             }
             
             /* タブ - シンプルに */
@@ -711,7 +792,7 @@ def show_main_app():
                 gap: 0 !important;
             }
             .stTabs [data-baseweb="tab"] {
-                color: #9090a0 !important;
+                color: #b0b0c0 !important; /* 文字色を少し明るく */
                 background-color: transparent !important;
                 border-radius: 6px;
                 padding: 8px 16px !important;
@@ -740,6 +821,17 @@ def show_main_app():
                 border: none !important;
             }
             
+            /* ダウンロードボタン */
+            .stDownloadButton > button {
+                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
+            }
+            .stDownloadButton > button:hover {
+                background-color: #2a2a4a !important;
+                border-color: #4a4a6a !important;
+            }
+            
             /* 入力欄 */
             .stTextInput > div > div > input,
             .stTextArea > div > div > textarea,
@@ -750,6 +842,15 @@ def show_main_app():
                 background-color: #1a1a2e !important;
                 color: #f0f0f5 !important;
                 border: 1px solid #2a2a4a !important;
+            }
+            .stTextInput > div > div > input::placeholder,
+            .stTextArea > div > div > textarea::placeholder,
+            .stNumberInput > div > div > input::placeholder,
+            input::placeholder,
+            textarea::placeholder {
+                color: #9090a0 !important;
+                -webkit-text-fill-color: #9090a0 !important;
+                opacity: 1 !important;
             }
             
             /* エクスパンダー */
@@ -834,6 +935,49 @@ def show_main_app():
                 background-color: #2a2a4a;
                 border-radius: 4px;
             }
+            /* === ファイナルオーバーライド: サイドバー入力欄・ボタンの完全統一 === */
+            /* 詳細度を極限まで高めて、Line 824付近のグローバル設定に打ち勝つ */
+            [data-testid="stSidebar"] textarea,
+            [data-testid="stSidebar"] input,
+            [data-testid="stSidebar"] .stChatInput textarea,
+            [data-testid="stSidebar"] .stTextArea textarea,
+            [data-testid="stSidebar"] .stTextInput input,
+            [data-testid="stSidebar"] .stTextArea > div > div > textarea,
+            [data-testid="stSidebar"] .stTextInput > div > div > input,
+            [data-testid="stSidebar"] div[data-baseweb="base-input"],
+            [data-testid="stSidebar"] div[data-baseweb="input"],
+            [data-testid="stSidebar"] div[data-baseweb="textarea"],
+            [data-testid="stSidebar"] .stTextArea div[data-baseweb="base-input"],
+            [data-testid="stSidebar"] .stTextArea,
+            [data-testid="stSidebar"] .stTextInput {
+                background-color: #f4f4f8 !important;
+                background: #f4f4f8 !important;
+                color: #333333 !important;
+                -webkit-text-fill-color: #333333 !important;
+                border-color: #d0d0d8 !important;
+            }
+            
+            /* サイドバー内のボタン（送信ボタン含む）の完全統一 */
+            [data-testid="stSidebar"] button,
+            [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] button {
+                background-color: #f4f4f8 !important;
+                color: #333333 !important;
+                border: 1px solid #b0b0b8 !important;
+            }
+            [data-testid="stSidebar"] button:hover,
+            [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] button:hover {
+                background-color: #e4e4e8 !important;
+            }
+            
+            /* プレースホルダーの色も調整 */
+            [data-testid="stSidebar"] textarea::placeholder,
+            [data-testid="stSidebar"] input::placeholder,
+            [data-testid="stSidebar"] .stTextArea textarea::placeholder,
+            [data-testid="stSidebar"] .stTextInput input::placeholder {
+                color: #888888 !important;
+                -webkit-text-fill-color: #888888 !important;
+            }
+            
             </style>
             """, unsafe_allow_html=True)
         
