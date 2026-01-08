@@ -561,14 +561,21 @@ def show_main_app():
                 background-color: #0f0f23 !important;
             }
             
-            /* サイドバー - 完全対応 */
-            [data-testid="stSidebar"], 
-            [data-testid="stSidebar"] > div,
-            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            /* サイドバー - ブランケットリセット（すべての白を除去） */
+            [data-testid="stSidebar"],
+            [data-testid="stSidebar"] * {
+                background-color: transparent !important;
+                border-color: #2a2a4a !important;
+                box-shadow: none !important;
+            }
+            
+            /* サイドバーのベース背景だけ設定 */
+            [data-testid="stSidebar"] > div:first-child {
                 background-color: #1a1a2e !important;
             }
             [data-testid="stSidebar"] {
                 border-right: 1px solid #2a2a4a !important;
+                background-color: #1a1a2e !important;
             }
             
             /* サイドバー内のテキスト */
