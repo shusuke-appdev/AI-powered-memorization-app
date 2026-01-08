@@ -539,52 +539,68 @@ def show_main_app():
         # ダークモード用のスクリプト
         if st.session_state.dark_mode:
             st.markdown("""
-            <script>
-            document.documentElement.setAttribute('data-theme', 'dark');
-            </script>
             <style>
-            /* ダークモード - 基本背景 */
+            /* 
+             * ダークモード - 統一感のある配色
+             * ベース: #0f0f23 (深い紺)
+             * カード: #1a1a2e (少し明るい紺)
+             * ボーダー: #2a2a4a (グレー紺)
+             * テキスト: #f0f0f5 (オフホワイト)
+             * サブテキスト: #9090a0 (グレー)
+             * アクセント: #6c5ce7 (紫、控えめに)
+             */
+            
+            /* 基本背景 */
             .stApp, .main, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-                background-color: #1a1a2e !important;
+                background-color: #0f0f23 !important;
             }
             
             /* サイドバー */
             [data-testid="stSidebar"], [data-testid="stSidebar"] > div {
-                background-color: #16213e !important;
+                background-color: #1a1a2e !important;
+                border-right: 1px solid #2a2a4a !important;
             }
             
             /* 全テキスト */
             .stMarkdown, p, span, div, h1, h2, h3, h4, h5, h6, label, li, td, th {
-                color: #e5e5e5 !important;
+                color: #f0f0f5 !important;
             }
             
-            /* タブ */
+            /* タブ - シンプルに */
             .stTabs [data-baseweb="tab-list"] {
-                background-color: #16213e !important;
-                border-radius: 10px;
+                background-color: #1a1a2e !important;
+                border-radius: 8px;
+                border: 1px solid #2a2a4a !important;
+                gap: 0 !important;
             }
             .stTabs [data-baseweb="tab"] {
-                color: #a0aec0 !important;
+                color: #9090a0 !important;
                 background-color: transparent !important;
+                border-radius: 6px;
+                padding: 8px 16px !important;
             }
             .stTabs [aria-selected="true"] {
-                color: #00d9a5 !important;
-                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                background-color: #2a2a4a !important;
+            }
+            .stTabs [data-baseweb="tab-highlight"] {
+                background-color: transparent !important;
             }
             
-            /* ボタン */
+            /* ボタン - 落ち着いた色調 */
             .stButton > button {
-                background-color: #2d3748 !important;
-                color: #e5e5e5 !important;
-                border-color: #4a5568 !important;
+                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
             }
             .stButton > button:hover {
-                background-color: #4a5568 !important;
-                border-color: #00d9a5 !important;
+                background-color: #2a2a4a !important;
+                border-color: #4a4a6a !important;
             }
             .stButton > button[kind="primary"] {
-                background-color: #00d9a5 !important;
-                color: #1a1a2e !important;
+                background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%) !important;
+                color: #ffffff !important;
+                border: none !important;
             }
             
             /* 入力欄 */
@@ -592,72 +608,94 @@ def show_main_app():
             .stTextArea > div > div > textarea,
             .stNumberInput > div > div > input,
             .stSelectbox > div > div,
-            [data-baseweb="select"] > div {
-                background-color: #2d3748 !important;
-                color: #e5e5e5 !important;
-                border-color: #4a5568 !important;
+            [data-baseweb="select"] > div,
+            [data-baseweb="input"] {
+                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
             }
             
             /* エクスパンダー */
             .streamlit-expanderHeader {
-                background-color: #2d3748 !important;
-                color: #e5e5e5 !important;
+                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
             }
             .streamlit-expanderContent {
-                background-color: #16213e !important;
+                background-color: #1a1a2e !important;
+                border: 1px solid #2a2a4a !important;
+                border-top: none !important;
             }
             
             /* フラッシュカード */
             .flashcard {
-                background-color: #16213e !important;
-                border-color: #2d3748 !important;
+                background-color: #1a1a2e !important;
+                border: 1px solid #2a2a4a !important;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
             }
             .flashcard-question, .flashcard-answer {
-                color: #e5e5e5 !important;
+                color: #f0f0f5 !important;
             }
             .flashcard-title {
-                background-color: #065f46 !important;
-                color: #d1fae5 !important;
-                border-color: #00d9a5 !important;
+                background-color: #2a2a4a !important;
+                color: #a29bfe !important;
+                border: 1px solid #4a4a6a !important;
             }
             .flashcard-category {
-                background-color: #2d3748 !important;
-                color: #a0aec0 !important;
+                background-color: #2a2a4a !important;
+                color: #9090a0 !important;
             }
             
             /* メトリクス */
             [data-testid="stMetricValue"] {
-                color: #00d9a5 !important;
+                color: #a29bfe !important;
             }
             [data-testid="stMetricLabel"] {
-                color: #a0aec0 !important;
+                color: #9090a0 !important;
             }
             
             /* アラート・メッセージ */
             .stAlert {
-                background-color: #2d3748 !important;
-                color: #e5e5e5 !important;
+                background-color: #1a1a2e !important;
+                color: #f0f0f5 !important;
+                border: 1px solid #2a2a4a !important;
             }
             
             /* プログレスバー */
             .stProgress > div > div {
-                background-color: #4a5568 !important;
+                background-color: #2a2a4a !important;
             }
             .stProgress > div > div > div {
-                background-color: #00d9a5 !important;
+                background: linear-gradient(90deg, #6c5ce7 0%, #a29bfe 100%) !important;
             }
             
-            /* チェックボックス・ラジオ */
+            /* チェックボックス */
             .stCheckbox label, .stRadio label {
-                color: #e5e5e5 !important;
+                color: #f0f0f5 !important;
             }
             
             /* テーブル */
             .stDataFrame, table {
-                background-color: #16213e !important;
+                background-color: #1a1a2e !important;
+                border: 1px solid #2a2a4a !important;
             }
             th {
-                background-color: #2d3748 !important;
+                background-color: #2a2a4a !important;
+                color: #f0f0f5 !important;
+            }
+            
+            /* 区切り線 */
+            hr {
+                border-color: #2a2a4a !important;
+            }
+            
+            /* スクロールバー */
+            ::-webkit-scrollbar {
+                background-color: #1a1a2e;
+            }
+            ::-webkit-scrollbar-thumb {
+                background-color: #2a2a4a;
+                border-radius: 4px;
             }
             </style>
             """, unsafe_allow_html=True)
