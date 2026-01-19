@@ -122,7 +122,7 @@ st.markdown("""
         padding: 0.5rem 1rem;
         font-weight: 600;
         border: none;
-        transition: all 0.2s;
+        transition: background-color 0.2s, color 0.2s;
     }
     
     /* Primary button - 緑色 */
@@ -153,7 +153,7 @@ st.markdown("""
         background-color: #f8f9fa;
         border-radius: 0;
         color: #6b7280;
-        transition: all 0.3s;
+        transition: background-color 0.2s, color 0.2s;
         flex: 1;
         text-align: center;
     }
@@ -232,7 +232,7 @@ st.markdown("""
         flex-wrap: wrap;
         gap: 10px;
         padding: 20px;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        background: #f8fafc;
         border-radius: 16px;
         border: 1px solid #e2e8f0;
         margin: 20px 0;
@@ -247,7 +247,7 @@ st.markdown("""
         font-size: 15px;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: transform 0.1s, background-color 0.2s, color 0.2s;
         border: 2px solid transparent;
         user-select: none;
     }
@@ -263,18 +263,18 @@ st.markdown("""
         border-color: #10b981;
         background: #f0fdf4;
         transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(16,185,129,0.15);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
     
     .phrase-toggle.selected {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        background: #10b981;
         color: white;
         border-color: #059669;
-        box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
     
     .phrase-toggle.selected:hover {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        background: #059669;
         transform: translateY(-1px);
     }
     
@@ -444,7 +444,7 @@ def show_main_app():
     
     /* ボタンスタイル */
     [data-testid="stSidebar"] .stButton button {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        background: #10b981;
         color: white !important;
         border: none;
         border-radius: 10px;
@@ -452,7 +452,7 @@ def show_main_app():
         font-weight: 600;
     }
     [data-testid="stSidebar"] .stButton button:hover {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        background: #059669;
     }
     [data-testid="stSidebar"] hr {
         border-color: #d1d5db;
@@ -503,7 +503,7 @@ def show_main_app():
         border-left: 3px solid #6b7280;
     }
     .chat-message.assistant {
-        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        background: #d1fae5;
         margin-right: 15px;
         border-left: 3px solid #10b981;
         color: #065f46 !important;
@@ -553,7 +553,7 @@ def show_main_app():
              * ボーダー: #2a2a4a (グレー紺)
              * テキスト: #f0f0f5 (オフホワイト)
              * サブテキスト: #9090a0 (グレー)
-             * アクセント: #6c5ce7 (紫、控えめに)
+             * アクセント: #10b981 (緑 - 統一)
              */
             
             /* 基本背景 - ダークグレー */
@@ -613,7 +613,7 @@ def show_main_app():
             }
             [data-testid="stSidebar"] .chat-message.assistant {
                 background: #f4f4f8 !important; 
-                border-left: 3px solid #6c5ce7 !important;
+                border-left: 3px solid #10b981 !important;
                 color: #333333 !important;
             }
             [data-testid="stSidebar"] h3,
@@ -753,7 +753,7 @@ def show_main_app():
             /* チャット送信ボタン - アクセントカラー */
             [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"],
             [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] button {
-                background-color: #6c5ce7 !important; /* 目立つ色に */
+                background-color: #10b981 !important; /* 緑に統一 */
                 color: #ffffff !important;
                 border: none !important;
             }
