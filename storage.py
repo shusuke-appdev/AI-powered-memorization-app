@@ -211,6 +211,17 @@ def toggle_favorite(user_id, card_id, is_favorite):
     # キャッシュをクリア
     clear_cards_cache(user_id)
 
+def toggle_favorite_by_source_id(user_id, source_id, is_favorite):
+    """原文IDに紐づく全てのカードのお気に入り状態をトグル"""
+    supabase = get_supabase()
+    
+    supabase.table("cards").update({
+        "is_favorite": is_favorite
+    }).eq("source_id", source_id).eq("user_id", user_id).execute()
+    
+    # キャッシュをクリア
+    clear_cards_cache(user_id)
+
 def get_favorite_cards(user_id):
     """お気に入りカードのみを取得"""
     cards = load_cards(user_id)

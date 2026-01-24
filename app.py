@@ -9,6 +9,7 @@ from database import DatabaseConnectionError
 from stats import calculate_statistics, render_statistics_ui
 from export_import import render_export_import_ui
 from streamlit_cookies_controller import CookieController
+from components import render_audio_player
 
 # Page Config
 st.set_page_config(
@@ -72,13 +73,13 @@ st.markdown("""
         position: absolute;
         top: 12px;
         left: 20px;
-        font-size: 16px;
+        font-size: 22px;
         color: #059669;
         font-weight: 700;
         text-transform: none;
         letter-spacing: 0;
         background-color: #d1fae5;
-        padding: 4px 12px;
+        padding: 6px 16px;
         border-radius: 8px;
         border: 1px solid #10b981;
     }
@@ -148,7 +149,7 @@ st.markdown("""
         font-weight: 600;
         color: var(--text-primary);
         margin-bottom: 20px;
-        padding-top: 40px;
+        padding-top: 60px;
     }
 
     .flashcard-answer {
@@ -333,25 +334,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# JavaScript for Text-to-Speech
-st.markdown("""
-<script>
-function speakText(text) {
-    if ('speechSynthesis' in window) {
-        // 既存の読み上げをキャンセル
-        speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ja-JP';
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        speechSynthesis.speak(utterance);
-    } else {
-        alert('お使いのブラウザは音声読み上げに対応していません。');
-    }
-}
-</script>
-""", unsafe_allow_html=True)
+
 
 # ============ 認証処理 ============
 
@@ -559,8 +542,8 @@ def show_main_app():
     <style>
     @media (max-width: 768px) {
         .flashcard { padding: 20px; margin-bottom: 15px; }
-        .flashcard-question { font-size: 18px; padding-top: 35px; }
-        .flashcard-title { font-size: 12px; }
+        .flashcard-question { font-size: 18px; padding-top: 45px; }
+        .flashcard-title { font-size: 16px; }
         .stButton button { min-height: 48px; font-size: 16px; }
     }
     </style>
@@ -1160,7 +1143,7 @@ def show_main_app():
     st.title("🧠 AI 暗記カード")
     
     # Tab Navigation
-    tab1, tab2, tab3, tab4 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🗂️ カード管理", "📊 統計"])
+    tab1, tab2, tab5, tab3, tab4 = st.tabs(["📚 本日のノルマ", "📝 カードを追加", "🎧 聞き流し", "🗂️ カード管理", "📊 統計"])
 
     # Review Page
     with tab1:
@@ -1245,52 +1228,44 @@ def show_main_app():
                         {f'<div class="flashcard-title">{current_source.get("title", "")}</div>' if current_source.get("title") else ''}
                         {f'<div class="flashcard-category category-{current_source.get("category", "その他")}">{current_source.get("category", "その他")}</div>'}
                         <div class="flashcard-question" style="font-size: 18px; text-align: left;">{current_source.get("source_text", "")}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)                    
+                    # 関連カードの情報を取得して、お気に入り状態を判定
+                    # 原文IDに紐づくカードのいずれか一つでもお気に入りなら、原文もお気に入りとみなす（またはDB整合性チェック）
+                    related_cards_for_fav = [c for c in cards if c.get("source_id") == current_source["id"]]
+                    is_source_fav = any(c.get("is_favorite", False) for c in related_cards_for_fav)
                     
-                    # 読み上げボタン（個別 + 一括）
-                    speak_col1, speak_col2 = st.columns(2)
-                    with speak_col1:
-                        current_text = current_source.get("source_text", "").replace("'", "\\'")
-                        st.markdown(f"""
-                        <button onclick="speakText('{current_text}');" 
-                                style="width:100%; padding:10px; border-radius:8px; border:1px solid #e5e7eb; 
-                                       background:#fff; cursor:pointer; font-size:14px;">
-                            🔊 この原文を読み上げ
-                        </button>
-                        """, unsafe_allow_html=True)
-                    with speak_col2:
-                        # 全原文を連結
-                        all_texts = " ... ".join([sc.get("source_text", "").replace("'", "\\'") for sc in source_cards])
-                        st.markdown(f"""
-                        <button onclick="speakText('{all_texts}');" 
-                                style="width:100%; padding:10px; border-radius:8px; border:1px solid #10b981; 
-                                       background:#d1fae5; cursor:pointer; font-size:14px; font-weight:bold;">
-                            🔊 すべて読み上げ ({len(source_cards)}件)
-                        </button>
-                        """, unsafe_allow_html=True)
-                    
-                    # ナビゲーション
+                    # ナビゲーション [お気に入り] [復習終了(大)] [次へ]
                     nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
+                    
                     with nav_col1:
-                        if st.session_state.source_review_index > 0:
-                            if st.button("◀ 前へ", use_container_width=True):
-                                st.session_state.source_review_index -= 1
-                                st.rerun()
+                        fav_label = "⭐ 解除" if is_source_fav else "☆ 登録"
+                        if st.button(fav_label, key=f"source_fav_{current_source['id']}", use_container_width=True):
+                            toggle_favorite_by_source_id(user_id, current_source['id'], not is_source_fav)
+                            st.rerun()
+                            
                     with nav_col2:
                         if st.button("✓ 復習を終了", type="primary", use_container_width=True):
                             st.session_state.reviewed_source_ids = []
                             st.session_state.source_review_index = 0
                             st.rerun()
+                            
                     with nav_col3:
                         if st.session_state.source_review_index < len(source_cards) - 1:
                             if st.button("次へ ▶", use_container_width=True):
                                 st.session_state.source_review_index += 1
                                 st.rerun()
+                        elif st.session_state.source_review_index > 0:
+                             # 戻るボタンも一応残すが、スペースの都合で変更または削除も検討
+                             if st.button("◀ 前へ", use_container_width=True):
+                                st.session_state.source_review_index -= 1
+                                st.rerun()
+
                 else:
                     st.info("原文カードが見つかりませんでした。")
                     if st.button("クリア"):
                         st.session_state.reviewed_source_ids = []
+                        st.session_state.reviewed_source_index = 0 # 念のためリセット
                         st.rerun()
         else:
             # 固定されたノルマ数と残り枚数を計算
@@ -1310,42 +1285,27 @@ def show_main_app():
                  
             current_card = due_cards[st.session_state.current_card_index]
             
-            # Card Display
+            # Card Display with favorite star
+            is_fav = current_card.get("is_favorite", False)
+            fav_star = "⭐" if is_fav else "☆"
+            
             st.markdown(f"""
             <div class="flashcard flashcard-bg-{current_card.get('category', 'その他')}">
                 {f'<div class="flashcard-title">{current_card.get("title", "")}</div>' if current_card.get("title") else ''}
-                {f'<div class="flashcard-category category-{current_card.get("category", "その他")}">{current_card.get("category", "その他")}</div>'}
+                <div class="flashcard-category category-{current_card.get("category", "その他")}">
+                    {fav_star} {current_card.get("category", "その他")}
+                </div>
                 <div class="flashcard-question">{current_card['question']}</div>
                 {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) else ''}
             </div>
             """, unsafe_allow_html=True)
             
-            # Favorite and Speak buttons
-            is_fav = current_card.get("is_favorite", False)
-            btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
-            with btn_col1:
-                fav_label = "⭐ お気に入り" if is_fav else "☆ お気に入り"
-                if st.button(fav_label, key=f"fav_{current_card['id']}", use_container_width=True):
-                    toggle_favorite(user_id, current_card['id'], not is_fav)
-                    st.rerun()
-            with btn_col2:
-                # 読み上げボタン（JavaScript経由）
-                speak_text = current_card['question'].replace("______", "空欄")
-                st.markdown(f"""
-                <button onclick="speakText('{speak_text.replace("'", "\\'")}');" 
-                        style="width:100%; padding:8px; border-radius:8px; border:1px solid #e5e7eb; 
-                               background:#fff; cursor:pointer; font-size:14px;">
-                    🔊 読み上げ
-                </button>
-                """, unsafe_allow_html=True)
-            
-            # Controls
+            # Buttons: お気に入り + 答えを見る (side by side)
+            # Buttons: 答えを見る
             if not st.session_state.get("show_answer", False):
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    if st.button("答えを見る", type="primary", use_container_width=True):
-                        st.session_state.show_answer = True
-                        st.rerun()
+                if st.button("答えを見る", type="primary", use_container_width=True):
+                    st.session_state.show_answer = True
+                    st.rerun()
             else:
                 st.markdown("<div style='text-align: center; margin-bottom: 10px; color: #6b7280;'>どれくらい覚えていましたか？</div>", unsafe_allow_html=True)
                 
@@ -1686,6 +1646,37 @@ def show_main_app():
 
 
     # Manage Cards Page
+    # ============ 聞き流しページ (Tab 5) ============
+    with tab5:
+        st.header("🎧 聞き流しモード")
+        st.markdown("教科を選択して、原文の音声を聞き流すことができます。")
+        
+        # 教科選択
+        selected_category_audio = st.selectbox("教科を選択", CATEGORIES, key="audio_category")
+        
+        # プレイリスト作成ボタン
+        if st.button("▶️ 再生リストを作成・再生", type="primary"):
+            # 原文カードの読み込みとフィルタリング
+            source_cards_all = load_source_cards(user_id)
+            playlist = [
+                {"id": s["id"], "text": s["source_text"], "title": s.get("title", "")}
+                for s in source_cards_all
+                if s.get("category") == selected_category_audio
+            ]
+            
+            if not playlist:
+                st.warning(f"「{selected_category_audio}」の原文カードがありません。")
+            else:
+                # ランダムシャッフル
+                import random
+                random.shuffle(playlist)
+                
+                st.success(f"全{len(playlist)}件の再生リストを作成しました。")
+                
+                # プレイヤーコンポーネントの表示
+                render_audio_player(playlist)
+
+    # ============ カード管理ページ ============
     with tab3:
         st.title("🗂️ カード管理")
         
@@ -1778,10 +1769,14 @@ def show_main_app():
                                 
                                 # 操作ボタン
                                 st.markdown("---")
-                                btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
+                                
+                                # お気に入り状態判定
+                                is_source_fav = any(c.get("is_favorite", False) for c in linked_cards)
+
+                                btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
                                 
                                 with btn_col1:
-                                    if st.button("💾 保存", key=f"save_source_{source_id}", type="primary"):
+                                    if st.button("💾 保存", key=f"save_source_{source_id}", type="primary", use_container_width=True):
                                         # 原文更新（簡易実装：削除→再作成はせず、今回はそのまま）
                                         # TODO: update_source_card関数が必要な場合は追加
                                         
@@ -1801,7 +1796,13 @@ def show_main_app():
                                         st.rerun()
                                 
                                 with btn_col2:
-                                    if st.button("🗑️ 全削除", key=f"del_all_{source_id}"):
+                                    fav_label = "⭐ 解除" if is_source_fav else "☆ 登録"
+                                    if st.button(fav_label, key=f"edit_fav_{source_id}", use_container_width=True):
+                                        toggle_favorite_by_source_id(user_id, source_id, not is_source_fav)
+                                        st.rerun()
+
+                                with btn_col3:
+                                    if st.button("🗑️ 全削除", key=f"del_all_{source_id}", use_container_width=True):
                                         st.session_state[f"confirm_del_all_{source_id}"] = True
                                 
                                 if st.session_state.get(f"confirm_del_all_{source_id}", False):
