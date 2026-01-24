@@ -5,3 +5,4 @@ typing_extensions
 streamlit-cookies-controller
 supabase
 bcrypt
+plotly

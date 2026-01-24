@@ -3,6 +3,8 @@
 """
 import datetime
 from collections import defaultdict
+import plotly.express as px
+import pandas as pd
 
 def calculate_statistics(cards, source_cards=None):
     """
@@ -38,16 +40,33 @@ def calculate_statistics(cards, source_cards=None):
     due_today = sum(1 for c in cards if c.get("next_review", "") <= today)
     
     # カテゴリ別統計
-    category_stats = defaultdict(lambda: {"total": 0, "mastered": 0, "due": 0})
+    # total, mastered, due, difficulty(easy/medium/hard)
+    category_stats = defaultdict(lambda: {
+        "total": 0, 
+        "mastered": 0, 
+        "due": 0, 
+        "difficulty": {"easy": 0, "medium": 0, "hard": 0}
+    })
+    
     for card in cards:
         category = card.get("category", "その他")
         category_stats[category]["total"] += 1
+        
         if card.get("repetitions", 0) >= 5:
             category_stats[category]["mastered"] += 1
         if card.get("next_review", "") <= today:
             category_stats[category]["due"] += 1
+            
+        # 難易度判定
+        ef = card.get("ease_factor", 2.5)
+        if ef >= 2.5:
+            category_stats[category]["difficulty"]["easy"] += 1
+        elif ef >= 2.0:
+            category_stats[category]["difficulty"]["medium"] += 1
+        else:
+            category_stats[category]["difficulty"]["hard"] += 1
     
-    # 難易度分布（ease_factorベース）
+    # 全体の難易度分布（ease_factorベース）
     difficulty_distribution = {"easy": 0, "medium": 0, "hard": 0}
     total_ease = 0
     for card in cards:
@@ -101,13 +120,69 @@ def render_statistics_ui(stats, st_module):
         st.progress(stats["mastery_rate"] / 100, text=f"習得率: {stats['mastery_rate']}%")
     
     # 難易度分布（シンプルなテキスト表示）
-    st.markdown("**難易度分布**")
+    st.markdown("**全体の難易度分布**")
     diff = stats["difficulty_distribution"]
     st.markdown(f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}")
     
-    # カテゴリ別統計（折りたたみ）
+    st.markdown("---")
+    
+    # カテゴリ別統計（グラフ表示）
     if stats["category_stats"]:
-        with st.expander("📊 カテゴリ別統計", expanded=False):
-            for category, cat_stats in stats["category_stats"].items():
-                mastery = cat_stats["mastered"] / cat_stats["total"] * 100 if cat_stats["total"] > 0 else 0
-                st.markdown(f"**{category}**: {cat_stats['total']}枚（習得{cat_stats['mastered']}枚, 復習待ち{cat_stats['due']}枚）")
+        st.subheader("📊 カテゴリ別 達成状況")
+        
+        categories = list(stats["category_stats"].items())
+        
+        # 4列レイアウトで表示（gap=smallで間隔を狭く）
+        cols = st.columns(4, gap="small")
+        
+        for idx, (cat_name, cat_data) in enumerate(categories):
+            with cols[idx % 4]:
+                render_category_chart(st, cat_name, cat_data)
+
+def render_category_chart(st, category, data):
+    """個別のカテゴリエリアを描画"""
+    st.markdown(f"**{category}**")
+    
+    # 基本情報の表示
+    total = data["total"]
+    mastery = round(data["mastered"] / total * 100, 1) if total > 0 else 0
+    st.caption(f"総数: {total}枚 | 習得率: {mastery}% | 復習待ち: {data['due']}枚")
+    
+    # 円グラフデータの作成
+    diff_data = data["difficulty"]
+    
+    # データフレーム作成（凡例の順序制御のため）
+    chart_df = pd.DataFrame([
+        {"Status": "簡単", "Count": diff_data["easy"], "Color": "#10b981"},  # Green
+        {"Status": "普通", "Count": diff_data["medium"], "Color": "#f59e0b"}, # Yellow/Orange
+        {"Status": "難しい", "Count": diff_data["hard"], "Color": "#ef4444"}    # Red
+    ])
+    
+    # カウントが0の項目を除外（グラフを綺麗にするため）
+    chart_df = chart_df[chart_df["Count"] > 0]
+    
+    if not chart_df.empty:
+        fig = px.pie(
+            chart_df, 
+            values="Count", 
+            names="Status",
+            color="Status",
+            color_discrete_map={
+                "簡単": "#10b981",
+                "普通": "#f59e0b",
+                "難しい": "#ef4444"
+            },
+            hole=0.4, # ドーナツチャートにする
+        )
+        fig.update_layout(
+            margin=dict(t=0, b=0, l=0, r=0),
+            height=200,
+            showlegend=False,
+            annotations=[dict(text=category, x=0.5, y=0.5, font_size=16, showarrow=False)]
+        )
+        fig.update_traces(textposition='inside', textinfo='percent')
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{category}")
+    else:
+        st.info("データがありません")
+
