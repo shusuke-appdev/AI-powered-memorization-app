@@ -5,6 +5,7 @@ import datetime
 from collections import defaultdict
 import plotly.express as px
 import pandas as pd
+from utils import get_category_colors
 
 def calculate_statistics(cards, source_cards=None):
     """
@@ -126,9 +127,9 @@ def render_statistics_ui(stats, st_module):
     
     st.markdown("---")
     
-    # カテゴリ別統計（グラフ表示）
+    # 教科別統計（グラフ表示）
     if stats["category_stats"]:
-        st.subheader("📊 カテゴリ別 達成状況")
+        st.subheader("📊 教科別 達成状況")
         
         categories = list(stats["category_stats"].items())
         
@@ -162,25 +163,42 @@ def render_category_chart(st, category, data):
     chart_df = chart_df[chart_df["Count"] > 0]
     
     if not chart_df.empty:
+        # 円グラフ用の鮮やかな原色を定義
+        VIVID_COLORS = {
+            "民法": "#dc2626",        # 鮮やかな赤
+            "商法": "#dc2626",
+            "民事訴訟法": "#dc2626",
+            "刑法": "#2563eb",        # 鮮やかな青
+            "刑事訴訟法": "#2563eb",
+            "憲法": "#16a34a",        # 鮮やかな緑
+            "行政法": "#16a34a",
+            "その他": "#ca8a04"       # 鮮やかな黄
+        }
+        
+        vivid_color = VIVID_COLORS.get(category, "#6b7280")
+        
+        # 円グラフを教科色で作成
         fig = px.pie(
             chart_df, 
             values="Count", 
             names="Status",
-            color="Status",
-            color_discrete_map={
-                "簡単": "#10b981",
-                "普通": "#f59e0b",
-                "難しい": "#ef4444"
-            },
-            hole=0.4, # ドーナツチャートにする
+            color_discrete_sequence=[vivid_color] * len(chart_df),
+            hole=0.4,
         )
+        
         fig.update_layout(
             margin=dict(t=0, b=0, l=0, r=0),
             height=200,
             showlegend=False,
-            annotations=[dict(text=category, x=0.5, y=0.5, font_size=16, showarrow=False)]
+            annotations=[dict(
+                text=category, 
+                x=0.5, y=0.5, 
+                font_size=14, 
+                font_color=vivid_color,
+                showarrow=False
+            )]
         )
-        fig.update_traces(textposition='inside', textinfo='percent')
+        fig.update_traces(textposition='inside', textinfo='percent', textfont_color='white')
         
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{category}")
     else:

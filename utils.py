@@ -196,3 +196,86 @@ def _adjust_to_target_blanks(selected, candidates, target, limit):
     
     return selected[:limit]
 
+# ============ カテゴリ別カラースキーム ============
+
+# カテゴリ分類
+CATEGORY_GROUPS = {
+    "民事系": ["民法", "商法", "民事訴訟法"],
+    "刑事系": ["刑法", "刑事訴訟法"],
+    "公法系": ["憲法", "行政法"],
+    "その他": ["その他"]
+}
+
+# カラーパレット（ライトモード / ダークモード）
+CATEGORY_COLORS = {
+    "民事系": {
+        "light": {"bg": "#fecaca", "text": "#b91c1c", "border": "#fca5a5"},
+        "dark": {"bg": "#7f1d1d", "text": "#fca5a5", "border": "#991b1b"}
+    },
+    "刑事系": {
+        "light": {"bg": "#bfdbfe", "text": "#1d4ed8", "border": "#93c5fd"},
+        "dark": {"bg": "#1e3a5f", "text": "#93c5fd", "border": "#1e40af"}
+    },
+    "公法系": {
+        "light": {"bg": "#bbf7d0", "text": "#15803d", "border": "#86efac"},
+        "dark": {"bg": "#14532d", "text": "#86efac", "border": "#166534"}
+    },
+    "その他": {
+        "light": {"bg": "#fef08a", "text": "#a16207", "border": "#fde047"},
+        "dark": {"bg": "#713f12", "text": "#fde047", "border": "#854d0e"}
+    }
+}
+
+def get_category_group(category):
+    """科目名からカテゴリグループを取得"""
+    for group, subjects in CATEGORY_GROUPS.items():
+        if category in subjects:
+            return group
+    return "その他"
+
+def get_category_colors(category, is_dark_mode=False):
+    """
+    カテゴリ名から色情報を取得
+    
+    Args:
+        category: 科目名（例: "民法", "刑法"）
+        is_dark_mode: ダークモードかどうか
+    
+    Returns:
+        dict: {"bg": 背景色, "text": 文字色, "border": ボーダー色}
+    """
+    group = get_category_group(category)
+    mode = "dark" if is_dark_mode else "light"
+    return CATEGORY_COLORS.get(group, CATEGORY_COLORS["その他"])[mode]
+
+def get_all_category_css():
+    """全カテゴリのCSSクラスを生成"""
+    css_rules = []
+    
+    for group, colors in CATEGORY_COLORS.items():
+        subjects = CATEGORY_GROUPS.get(group, [group])
+        for subject in subjects:
+            # ライトモード
+            css_rules.append(f"""
+    .category-{subject} {{
+        background-color: {colors['light']['bg']} !important;
+        color: {colors['light']['text']} !important;
+        border: 1px solid {colors['light']['border']} !important;
+    }}
+""")
+    
+    # ダークモード
+    css_rules.append("    /* ダークモード用カテゴリ色 */")
+    for group, colors in CATEGORY_COLORS.items():
+        subjects = CATEGORY_GROUPS.get(group, [group])
+        for subject in subjects:
+            css_rules.append(f"""
+    .dark-mode .category-{subject} {{
+        background-color: {colors['dark']['bg']} !important;
+        color: {colors['dark']['text']} !important;
+        border: 1px solid {colors['dark']['border']} !important;
+    }}
+""")
+    
+    return "\n".join(css_rules)
+

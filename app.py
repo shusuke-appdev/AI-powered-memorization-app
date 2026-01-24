@@ -3,7 +3,7 @@ import datetime
 import os
 from gemini_client import generate_flashcards, help_chat
 from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card, toggle_favorite
-from utils import calculate_next_review, select_hybrid_quota
+from utils import calculate_next_review, select_hybrid_quota, get_category_colors, get_all_category_css, get_category_group
 from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key, get_daily_quota_limit, update_daily_quota_limit
 from database import DatabaseConnectionError
 from stats import calculate_statistics, render_statistics_ui
@@ -88,11 +88,54 @@ st.markdown("""
         top: 10px;
         right: 20px;
         font-size: 12px;
-        background-color: #e5e7eb;
-        color: #374151;
         padding: 2px 8px;
         border-radius: 10px;
         font-weight: 600;
+        background-color: rgba(255,255,255,0.7);
+    }
+    
+    /* フラッシュカード背景色（民事系 - 薄赤） */
+    .flashcard-bg-民法, .flashcard-bg-商法, .flashcard-bg-民事訴訟法 {
+        background-color: #fef2f2 !important;
+        border: 2px solid #fecaca !important;
+    }
+    .flashcard-bg-民法 .flashcard-category, 
+    .flashcard-bg-商法 .flashcard-category, 
+    .flashcard-bg-民事訴訟法 .flashcard-category {
+        color: #b91c1c !important;
+        background-color: rgba(254, 202, 202, 0.8) !important;
+    }
+    
+    /* フラッシュカード背景色（刑事系 - 薄青） */
+    .flashcard-bg-刑法, .flashcard-bg-刑事訴訟法 {
+        background-color: #eff6ff !important;
+        border: 2px solid #bfdbfe !important;
+    }
+    .flashcard-bg-刑法 .flashcard-category, 
+    .flashcard-bg-刑事訴訟法 .flashcard-category {
+        color: #1d4ed8 !important;
+        background-color: rgba(191, 219, 254, 0.8) !important;
+    }
+    
+    /* フラッシュカード背景色（公法系 - 薄緑） */
+    .flashcard-bg-憲法, .flashcard-bg-行政法 {
+        background-color: #f0fdf4 !important;
+        border: 2px solid #bbf7d0 !important;
+    }
+    .flashcard-bg-憲法 .flashcard-category, 
+    .flashcard-bg-行政法 .flashcard-category {
+        color: #15803d !important;
+        background-color: rgba(187, 247, 208, 0.8) !important;
+    }
+    
+    /* フラッシュカード背景色（その他 - 薄黄） */
+    .flashcard-bg-その他 {
+        background-color: #fefce8 !important;
+        border: 2px solid #fef08a !important;
+    }
+    .flashcard-bg-その他 .flashcard-category {
+        color: #a16207 !important;
+        background-color: rgba(254, 240, 138, 0.8) !important;
     }
     
     .flashcard:hover {
@@ -125,16 +168,16 @@ st.markdown("""
         transition: background-color 0.2s, color 0.2s;
     }
     
-    /* Primary button - 緑色 */
+    /* Primary button - グレー */
     .stButton button[kind="primary"],
     .stButton button[data-testid="baseButton-primary"] {
-        background-color: #10b981 !important;
+        background-color: #64748b !important;
         color: white !important;
     }
     
     .stButton button[kind="primary"]:hover,
     .stButton button[data-testid="baseButton-primary"]:hover {
-        background-color: #059669 !important;
+        background-color: #334155 !important;
     }
     
     /* Tab Navigation Styling */
@@ -164,7 +207,7 @@ st.markdown("""
     }
     
     .stTabs [aria-selected="true"] {
-        background-color: #10b981;
+        background-color: #64748b;
         color: white;
     }
     
@@ -444,7 +487,7 @@ def show_main_app():
     
     /* ボタンスタイル */
     [data-testid="stSidebar"] .stButton button {
-        background: #10b981;
+        background: #64748b;
         color: white !important;
         border: none;
         border-radius: 10px;
@@ -452,7 +495,7 @@ def show_main_app():
         font-weight: 600;
     }
     [data-testid="stSidebar"] .stButton button:hover {
-        background: #059669;
+        background: #334155;
     }
     [data-testid="stSidebar"] hr {
         border-color: #d1d5db;
@@ -750,10 +793,10 @@ def show_main_app():
                 box-shadow: none !important;
             }
             
-            /* チャット送信ボタン - アクセントカラー */
+            /* チャット送信ボタン - グレー */
             [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"],
             [data-testid="stSidebar"] [data-testid="stChatInputSubmitButton"] button {
-                background-color: #10b981 !important; /* 緑に統一 */
+                background-color: #64748b !important;
                 color: #ffffff !important;
                 border: none !important;
             }
@@ -880,8 +923,35 @@ def show_main_app():
                 border: 1px solid #4a4a6a !important;
             }
             .flashcard-category {
-                background-color: #2a2a4a !important;
-                color: #9090a0 !important;
+                /* デフォルトスタイルは個別のカテゴリクラスで上書き */
+            }
+            
+            /* ダークモード カテゴリ別カラー（民事系 - 暗赤） */
+            .category-民法, .category-商法, .category-民事訴訟法 {
+                background-color: #7f1d1d !important;
+                color: #fca5a5 !important;
+                border: 1px solid #991b1b !important;
+            }
+            
+            /* ダークモード カテゴリ別カラー（刑事系 - 暗青） */
+            .category-刑法, .category-刑事訴訟法 {
+                background-color: #1e3a5f !important;
+                color: #93c5fd !important;
+                border: 1px solid #1e40af !important;
+            }
+            
+            /* ダークモード カテゴリ別カラー（公法系 - 暗緑） */
+            .category-憲法, .category-行政法 {
+                background-color: #14532d !important;
+                color: #86efac !important;
+                border: 1px solid #166534 !important;
+            }
+            
+            /* ダークモード カテゴリ別カラー（その他 - 暗黄） */
+            .category-その他 {
+                background-color: #713f12 !important;
+                color: #fde047 !important;
+                border: 1px solid #854d0e !important;
             }
             
             /* メトリクス */
@@ -1081,7 +1151,7 @@ def show_main_app():
         
         # ログアウトボタン（下部）
         st.markdown("---")
-        if st.button("🚪 ログアウト", use_container_width=True, key="sidebar_logout"):
+        if st.button("🚪 ログアウト", use_container_width=True, key="sidebar_logout", type="primary"):
             logout()
     
     # ============ メインコンテンツ ============
@@ -1171,9 +1241,9 @@ def show_main_app():
                     
                     # 原文表示
                     st.markdown(f"""
-                    <div class="flashcard">
+                    <div class="flashcard flashcard-bg-{current_source.get('category', 'その他')}">
                         {f'<div class="flashcard-title">{current_source.get("title", "")}</div>' if current_source.get("title") else ''}
-                        {f'<div class="flashcard-category">{current_source.get("category", "その他")}</div>'}
+                        {f'<div class="flashcard-category category-{current_source.get("category", "その他")}">{current_source.get("category", "その他")}</div>'}
                         <div class="flashcard-question" style="font-size: 18px; text-align: left;">{current_source.get("source_text", "")}</div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1242,9 +1312,9 @@ def show_main_app():
             
             # Card Display
             st.markdown(f"""
-            <div class="flashcard">
+            <div class="flashcard flashcard-bg-{current_card.get('category', 'その他')}">
                 {f'<div class="flashcard-title">{current_card.get("title", "")}</div>' if current_card.get("title") else ''}
-                {f'<div class="flashcard-category">{current_card.get("category", "その他")}</div>'}
+                {f'<div class="flashcard-category category-{current_card.get("category", "その他")}">{current_card.get("category", "その他")}</div>'}
                 <div class="flashcard-question">{current_card['question']}</div>
                 {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) else ''}
             </div>
