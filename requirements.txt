@@ -6,3 +6,5 @@ streamlit-cookies-controller
 supabase
 bcrypt
 plotly
+ruff
+pytest

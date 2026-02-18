@@ -1,31 +1,34 @@
-import re
-import random
 import json
 import math
+import os
+import random
+import re
 
 # ============ AI文節分割 ============
+
 
 def split_into_phrases(text, api_key):
     """
     AIを使ってテキストを文節（意味のある単位）に分割
-    
+
     Args:
         text (str): 分割するテキスト
         api_key (str): Gemini APIキー
-        
+
     Returns:
         list: 文節のリスト
     """
     if not api_key:
         # APIキーがない場合は句読点で簡易分割
         return simple_split(text)
-    
+
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
-        
+
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
+
         prompt = f"""以下のテキストを、暗記カード用の意味のまとまりに分割してください。
 
 【文法的ルール】
@@ -56,35 +59,42 @@ def split_into_phrases(text, api_key):
 
 【出力形式】
 {{"phrases": ["ブロック1", "ブロック2", "。", ...]}}"""
-        
+
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.0,
-                top_p=0.95,
-                response_mime_type="application/json"
-            )
+                temperature=0.0, top_p=0.95, response_mime_type="application/json"
+            ),
         )
-        
+
         result = json.loads(response.text)
         phrases = result.get("phrases", [])
-        
+
         if phrases:
             return phrases
         else:
             return simple_split(text)
-            
+
     except Exception as e:
         error_str = str(e).lower()
-        if "quota" in error_str or "rate" in error_str or "limit" in error_str or "429" in error_str:
-            return {"error": "API_QUOTA_EXCEEDED", "message": "APIの無料枠利用制限に達しました。しばらく待ってから再試行するか、別のAPIキーを使用してください。"}
+        if (
+            "quota" in error_str
+            or "rate" in error_str
+            or "limit" in error_str
+            or "429" in error_str
+        ):
+            return {
+                "error": "API_QUOTA_EXCEEDED",
+                "message": "APIの無料枠利用制限に達しました。しばらく待ってから再試行するか、別のAPIキーを使用してください。",
+            }
         print(f"AI分割エラー: {e}")
         return simple_split(text)
+
 
 def simple_split(text):
     """句読点とスペースで簡易分割"""
     # 句読点の後で分割（句読点は前の部分に含める）
-    parts = re.split(r'(?<=[。、，．,.])', text)
+    parts = re.split(r"(?<=[。、，．,.])", text)
     result = []
     for part in parts:
         part = part.strip()
@@ -92,31 +102,49 @@ def simple_split(text):
             result.append(part)
     return result if result else [text]
 
+
 # ============ AI穴埋め提案 ============
+
 
 def suggest_blanks(phrases, api_key):
     """
     AIが穴埋めにすべき文節を提案
-    
+
     Args:
         phrases (list): 文節のリスト
         api_key (str): Gemini APIキー
-        
+
     Returns:
         list: 穴埋めにすべき文節のインデックスリスト
     """
     if not api_key:
         return []
-    
+
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
-        
+
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
+
         # 句読点のセット（穴埋め対象外）
-        punctuation_set = {'。', '、', '，', '．', ',', '.', '！', '？', '!', '?', '：', ':', '；', ';'}
-        
+        punctuation_set = {
+            "。",
+            "、",
+            "，",
+            "．",
+            ",",
+            ".",
+            "！",
+            "？",
+            "!",
+            "?",
+            "：",
+            ":",
+            "；",
+            ";",
+        }
+
         # 文節にインデックスを付ける（句読点は除外して表示）
         indexed_phrases = []
         valid_indices = []
@@ -124,7 +152,7 @@ def suggest_blanks(phrases, api_key):
             if p.strip() not in punctuation_set:
                 indexed_phrases.append(f"{i}: {p}")
                 valid_indices.append(i)
-        
+
         prompt = f"""以下の文節リストから、暗記カードの穴埋めにすべき重要な文節を選んでください。
 
 【文節リスト】
@@ -138,59 +166,67 @@ def suggest_blanks(phrases, api_key):
 
 【出力形式】
 {{"selected_indices": [0, 2, 5]}}  // 選んだ文節のインデックス番号"""
-        
+
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.2,
-                top_p=0.95,
-                response_mime_type="application/json"
-            )
+                temperature=0.2, top_p=0.95, response_mime_type="application/json"
+            ),
         )
-        
+
         result = json.loads(response.text)
         selected = result.get("selected_indices", [])
-        
+
         # 句読点が含まれていた場合は除外
         selected = [i for i in selected if i in valid_indices]
         return selected
-        
+
     except Exception as e:
         error_str = str(e).lower()
-        if "quota" in error_str or "rate" in error_str or "limit" in error_str or "429" in error_str:
-            return {"error": "API_QUOTA_EXCEEDED", "message": "APIの無料枠利用制限に達しました。"}
+        if (
+            "quota" in error_str
+            or "rate" in error_str
+            or "limit" in error_str
+            or "429" in error_str
+        ):
+            return {
+                "error": "API_QUOTA_EXCEEDED",
+                "message": "APIの無料枠利用制限に達しました。",
+            }
         print(f"AI提案エラー: {e}")
         return []
 
+
 # ============ カード生成 ============
+
 
 def merge_adjacent_selections(phrases, selected_indices):
     """
     隣接する選択インデックスをグループ化
-    
+
     Returns:
         list of lists: 隣接するインデックスのグループ [[0,1,2], [5,6], ...]
     """
     if not selected_indices:
         return []
-    
+
     sorted_indices = sorted(selected_indices)
     groups = []
     current_group = [sorted_indices[0]]
-    
+
     for i in range(1, len(sorted_indices)):
         # 隣接しているか、間に句読点のみがあるかチェック
-        prev_idx = sorted_indices[i-1]
+        prev_idx = sorted_indices[i - 1]
         curr_idx = sorted_indices[i]
-        
+
         # 間にあるフレーズをチェック
         is_adjacent = True
         for j in range(prev_idx + 1, curr_idx):
             # 句読点以外があれば隣接とみなさない
-            if not phrases[j].strip() in ['。', '、', '，', '．', ',', '.', '']:
+            if phrases[j].strip() not in ["。", "、", "，", "．", ",", ".", ""]:
                 is_adjacent = False
                 break
-        
+
         if is_adjacent and curr_idx == prev_idx + 1:
             # 完全に隣接
             current_group.append(curr_idx)
@@ -201,34 +237,35 @@ def merge_adjacent_selections(phrases, selected_indices):
             # 隣接していない
             groups.append(current_group)
             current_group = [curr_idx]
-    
+
     groups.append(current_group)
     return groups
+
 
 def generate_cards_from_selection(phrases, selected_indices):
     """
     選択された文節を穴埋めにしてカードを生成（隣接ブロックは結合）
-    
+
     全穴埋め箇所を必ずカバーし、1カードあたり最大5箇所を穴埋めにする。
-    
+
     Args:
         phrases (list): 文節のリスト
         selected_indices (list): 穴埋めにする文節のインデックス
-        
+
     Returns:
         list: カードのリスト
     """
     if not selected_indices:
         return []
-    
+
     # 隣接する選択をグループ化
     groups = merge_adjacent_selections(phrases, selected_indices)
     num_blanks = len(groups)  # 結合後の穴埋め箇所数
-    
+
     BLANKS_PER_CARD = 5  # 1カードあたりの穴埋め箇所数
-    
+
     cards = []
-    
+
     def build_card_from_groups(target_groups):
         """指定されたグループを穴埋めにしてカードを作成"""
         question_parts = []
@@ -236,42 +273,39 @@ def generate_cards_from_selection(phrases, selected_indices):
         all_target_indices = set()
         for g in target_groups:
             all_target_indices.update(g)
-        
+
         current_answer = []
         in_blank = False
-        
+
         for i, phrase in enumerate(phrases):
             if i in all_target_indices:
                 if not in_blank:
-                    question_parts.append('______')
+                    question_parts.append("______")
                     in_blank = True
                 current_answer.append(phrase)
             else:
                 if in_blank and current_answer:
-                    answers.append(''.join(current_answer))
+                    answers.append("".join(current_answer))
                     current_answer = []
                     in_blank = False
                 question_parts.append(phrase)
-        
+
         if current_answer:
-            answers.append(''.join(current_answer))
-        
-        return {
-            "question": ''.join(question_parts),
-            "answer": " / ".join(answers)
-        }
-    
+            answers.append("".join(current_answer))
+
+        return {"question": "".join(question_parts), "answer": " / ".join(answers)}
+
     if num_blanks <= BLANKS_PER_CARD:
         # 5箇所以下: 1枚のカードで全箇所をカバー
         cards.append(build_card_from_groups(groups))
     else:
         # 6箇所以上: 全箇所をカバーしつつ、各カード最大5箇所
         num_cards = math.ceil(num_blanks / BLANKS_PER_CARD)
-        
+
         # グループインデックスをシャッフルしてランダムに分配
         group_indices = list(range(num_blanks))
         random.shuffle(group_indices)
-        
+
         # 均等に分割（各カードに割り当て）
         for card_idx in range(num_cards):
             start = card_idx * BLANKS_PER_CARD
@@ -279,53 +313,57 @@ def generate_cards_from_selection(phrases, selected_indices):
             combo = sorted(group_indices[start:end])
             target_groups = [groups[i] for i in combo]
             cards.append(build_card_from_groups(target_groups))
-    
+
     return cards
+
 
 # ============ 旧API互換 ============
 
+
 def parse_blanks_from_text(text):
     """【】マーカーからカードを生成（旧方式との互換性のため残す）"""
-    pattern = r'【(.+?)】'
+    pattern = r"【(.+?)】"
     matches = list(re.finditer(pattern, text))
-    
+
     if not matches:
         return []
-    
+
     # 文節リストと選択インデックスに変換
     phrases = []
     selected_indices = []
     last_end = 0
-    
+
     for i, m in enumerate(matches):
         # マッチ前のテキスト
         if m.start() > last_end:
-            before = text[last_end:m.start()]
+            before = text[last_end : m.start()]
             if before:
                 phrases.append(before)
-        
+
         # マッチしたテキスト（穴埋め対象）
         selected_indices.append(len(phrases))
         phrases.append(m.group(1))
         last_end = m.end()
-    
+
     # 最後のテキスト
     if last_end < len(text):
         after = text[last_end:]
         if after:
             phrases.append(after)
-    
+
     return generate_cards_from_selection(phrases, selected_indices)
+
 
 def validate_blank_markers(text):
     """穴埋め指定の検証（旧方式との互換性）"""
-    pattern = r'【(.+?)】'
+    pattern = r"【(.+?)】"
     matches = re.findall(pattern, text)
-    
+
     if not matches:
         return False, "穴埋め箇所が指定されていません。", 0
-    
+
     return True, f"{len(matches)}箇所の穴埋めが指定されています。", len(matches)
+
 
 def generate_flashcards(text, api_key=None, keywords=None):
     """旧API互換のエントリーポイント"""
@@ -334,16 +372,19 @@ def generate_flashcards(text, api_key=None, keywords=None):
         return None
     return parse_blanks_from_text(text)
 
+
 # ============ ヘルプAIチャット ============
 
-import os
+
+# import os (Moved to top)
+
 
 def _load_help_context():
     """HELP_AI_CONTEXT.mdを読み込む"""
     # スクリプトと同じディレクトリにあるファイルを読み込み
     script_dir = os.path.dirname(os.path.abspath(__file__))
     context_path = os.path.join(script_dir, "HELP_AI_CONTEXT.md")
-    
+
     try:
         with open(context_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -351,33 +392,38 @@ def _load_help_context():
         print(f"ヘルプコンテキスト読み込みエラー: {e}")
         return ""
 
+
 def help_chat(user_question: str, api_key: str, chat_history: list = None) -> dict:
     """
     アプリのヘルプAIチャットボット
-    
+
     Args:
         user_question (str): ユーザーの質問
         api_key (str): Gemini APIキー
         chat_history (list): 過去のチャット履歴 [{"role": "user/assistant", "content": "..."}, ...]
-        
+
     Returns:
         dict: {"success": bool, "response": str, "error": str (optional)}
     """
     if not api_key:
-        return {"success": False, "error": "APIキーが設定されていません。左側のメニューからAPIキーを設定してください。"}
-    
+        return {
+            "success": False,
+            "error": "APIキーが設定されていません。左側のメニューからAPIキーを設定してください。",
+        }
+
     if not user_question or not user_question.strip():
         return {"success": False, "error": "質問を入力してください。"}
-    
+
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
-        
+
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
+
         # ヘルプコンテキストを読み込み
         help_context = _load_help_context()
-        
+
         # システムプロンプト
         system_prompt = f"""あなたは「AI暗記カード」アプリのヘルプアシスタントです。
 ユーザーからの質問に、以下のアプリ情報を元に回答してください。
@@ -392,29 +438,48 @@ def help_chat(user_question: str, api_key: str, chat_history: list = None) -> di
 【アプリ情報】
 {help_context}
 """
-        
+
         # チャット履歴を組み立て
-        messages = [{"role": "user", "parts": [system_prompt + "\n\n（以下がユーザーとの会話です）"]}]
-        messages.append({"role": "model", "parts": ["了解しました。AI暗記カードアプリのヘルプアシスタントとして、ご質問にお答えします。"]})
-        
+        messages = [
+            {
+                "role": "user",
+                "parts": [system_prompt + "\n\n（以下がユーザーとの会話です）"],
+            }
+        ]
+        messages.append(
+            {
+                "role": "model",
+                "parts": [
+                    "了解しました。AI暗記カードアプリのヘルプアシスタントとして、ご質問にお答えします。"
+                ],
+            }
+        )
+
         if chat_history:
             for msg in chat_history:
                 role = "user" if msg.get("role") == "user" else "model"
                 messages.append({"role": role, "parts": [msg.get("content", "")]})
-        
+
         # 現在の質問を追加
         messages.append({"role": "user", "parts": [user_question]})
-        
+
         # チャットでレスポンスを生成
         chat = model.start_chat(history=messages[:-1])
         response = chat.send_message(user_question)
-        
+
         return {"success": True, "response": response.text}
-        
+
     except Exception as e:
         error_str = str(e).lower()
-        if "quota" in error_str or "rate" in error_str or "limit" in error_str or "429" in error_str:
-            return {"success": False, "error": "APIの無料枠利用制限に達しました。しばらく待ってから再試行してください。"}
+        if (
+            "quota" in error_str
+            or "rate" in error_str
+            or "limit" in error_str
+            or "429" in error_str
+        ):
+            return {
+                "success": False,
+                "error": "APIの無料枠利用制限に達しました。しばらく待ってから再試行してください。",
+            }
         print(f"ヘルプAIエラー: {e}")
         return {"success": False, "error": f"エラーが発生しました: {str(e)}"}
-

@@ -1,10 +1,12 @@
-import streamlit.components.v1 as components
 import json
+
+import streamlit.components.v1 as components
+
 
 def render_audio_player(playlist):
     """
     オーディオプレイヤーコンポーネントをレンダリングする
-    
+
     Args:
         playlist (list): 再生するアイテムのリスト [{"title": "...", "text": "..."}, ...]
     """
@@ -23,9 +25,9 @@ def render_audio_player(playlist):
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button onclick="prevTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">\u23EE 前へ</button>
-                <button id="play-btn" onclick="togglePlay()" style="flex: 2; padding: 10px; border-radius: 8px; border: none; background: #10b981; color: white; font-weight: bold; cursor: pointer;">\u25B6 再生</button>
-                <button onclick="nextTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">次へ \u23ED</button>
+                <button onclick="prevTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">\u23ee 前へ</button>
+                <button id="play-btn" onclick="togglePlay()" style="flex: 2; padding: 10px; border-radius: 8px; border: none; background: #10b981; color: white; font-weight: bold; cursor: pointer;">\u25b6 再生</button>
+                <button onclick="nextTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">次へ \u23ed</button>
             </div>
             
             <div style="margin-top: 15px; font-size: 14px; color: #6b7280; text-align: center;">
@@ -91,11 +93,11 @@ def render_audio_player(playlist):
                 if (isPlaying) {{
                     isPlaying = false;
                     synth.cancel();
-                    playBtn.textContent = "\u25B6 再生";
+                    playBtn.textContent = "\u25b6 再生";
                     playBtn.style.background = "#10b981";
                 }} else {{
                     isPlaying = true;
-                    playBtn.textContent = "\u23F8 一時停止";
+                    playBtn.textContent = "\u23f8 一時停止";
                     playBtn.style.background = "#ef4444";
                     speak();
                 }}
@@ -109,7 +111,7 @@ def render_audio_player(playlist):
                 }} else {{
                     // 最後まで言ったら停止
                     isPlaying = false;
-                    playBtn.textContent = "\u25B6 再生(終了)";
+                    playBtn.textContent = "\u25b6 再生(終了)";
                     playBtn.style.background = "#10b981";
                 }}
             }}

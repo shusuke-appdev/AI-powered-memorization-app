@@ -1,5 +1,6 @@
 import datetime
 
+
 def calculate_next_review(quality, card_data):
     """
     Calculates the next review date using the SuperMemo-2 (SM-2) algorithm.
@@ -21,9 +22,9 @@ def calculate_next_review(quality, card_data):
     Returns:
         dict: Updated card data with new repetitions, interval, ease_factor, and next_review.
     """
-    repetitions = card_data.get('repetitions', 0)
-    interval = card_data.get('interval', 0)
-    ease_factor = card_data.get('ease_factor', 2.5)
+    repetitions = card_data.get("repetitions", 0)
+    interval = card_data.get("interval", 0)
+    ease_factor = card_data.get("ease_factor", 2.5)
 
     if quality >= 3:
         if repetitions == 0:
@@ -32,169 +33,194 @@ def calculate_next_review(quality, card_data):
             interval = 6
         else:
             interval = int(interval * ease_factor)
-        
+
         repetitions += 1
     else:
         repetitions = 0
         interval = 1
-    
+
     # Update Ease Factor
     # EF' = EF + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
     # EF' cannot go below 1.3
     ease_factor = ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
     if ease_factor < 1.3:
         ease_factor = 1.3
-    
+
     next_review_date = datetime.date.today() + datetime.timedelta(days=interval)
 
     return {
-        'repetitions': repetitions,
-        'interval': interval,
-        'ease_factor': ease_factor,
-        'last_review': datetime.date.today().isoformat(),
-        'next_review': next_review_date.isoformat()
+        "repetitions": repetitions,
+        "interval": interval,
+        "ease_factor": ease_factor,
+        "last_review": datetime.date.today().isoformat(),
+        "next_review": next_review_date.isoformat(),
     }
+
 
 def get_initial_card_state():
     """Returns the initial state for a new card."""
     return {
-        'repetitions': 0,
-        'interval': 0,
-        'ease_factor': 2.5,
-        'last_review': None,
-        'next_review': datetime.date.today().isoformat() # Available immediately
+        "repetitions": 0,
+        "interval": 0,
+        "ease_factor": 2.5,
+        "last_review": None,
+        "next_review": datetime.date.today().isoformat(),  # Available immediately
     }
 
+
 # ============ ハイブリッド最適化アルゴリズム ============
+
 
 def select_hybrid_quota(due_cards, limit, all_cards):
     """
     ハイブリッド最適化によるカード選択
-    
+
     1. 同一source_idのカードを除外（1日1枚まで）
     2. 前半(ceil): 苦手カード優先（低ease_factor順）
     3. 後半(floor): 期限優先（古いnext_review順）
     4. 総穴埋め数を目標値に調整
-    
+
     Args:
         due_cards: 復習対象カードのリスト
         limit: 1日の上限枚数
         all_cards: 全カードリスト（平均blank_count計算用）
-    
+
     Returns:
         選択されたカードのリスト
     """
     if not due_cards:
         return []
-    
+
     # 1. 同一source_idのカードを除外（各source_idから1枚のみ）
     # ※カード数に関わらず常に適用
     seen_source_ids = set()
     unique_cards = []
     for card in due_cards:
-        source_id = card.get('source_id')
+        source_id = card.get("source_id")
         if source_id is None:
             # source_idがないカードはそのまま追加
             unique_cards.append(card)
         elif source_id not in seen_source_ids:
             seen_source_ids.add(source_id)
             unique_cards.append(card)
-    
+
     if len(unique_cards) <= limit:
         return unique_cards
-    
+
     # 2. ノルマを半分に分割（奇数時は苦手優先が多い）
     difficulty_count = (limit + 1) // 2
     deadline_count = limit - difficulty_count
-    
+
     # 苦手カード優先（低ease_factor順）
-    difficulty_sorted = sorted(unique_cards, key=lambda c: c.get('ease_factor', 2.5))
+    difficulty_sorted = sorted(unique_cards, key=lambda c: c.get("ease_factor", 2.5))
     difficulty_cards = difficulty_sorted[:difficulty_count]
-    
+
     # 期限優先（古いnext_review順）- 苦手カードとして選ばれなかったものから
     remaining = [c for c in unique_cards if c not in difficulty_cards]
-    deadline_sorted = sorted(remaining, key=lambda c: c.get('next_review', '9999-99-99'))
+    deadline_sorted = sorted(
+        remaining, key=lambda c: c.get("next_review", "9999-99-99")
+    )
     deadline_cards = deadline_sorted[:deadline_count]
-    
+
     selected = difficulty_cards + deadline_cards
-    
+
     # 3. 総穴埋め数を目標値に調整
     if all_cards:
-        avg_blank = sum(c.get('blank_count', 1) for c in all_cards) / len(all_cards)
+        avg_blank = sum(c.get("blank_count", 1) for c in all_cards) / len(all_cards)
         target_blanks = avg_blank * limit
-        selected = _adjust_to_target_blanks(selected, unique_cards, target_blanks, limit)
-    
+        selected = _adjust_to_target_blanks(
+            selected, unique_cards, target_blanks, limit
+        )
+
     return selected
+
 
 def _adjust_to_target_blanks(selected, candidates, target, limit):
     """
     総穴埋め数を目標値に近づけるよう調整
     ※同一source_idのカードが選ばれないようチェック
     """
-    current_blanks = sum(c.get('blank_count', 1) for c in selected)
-    
+    current_blanks = sum(c.get("blank_count", 1) for c in selected)
+
     # 目標との差が小さい場合は調整不要
     if abs(current_blanks - target) < 1:
         return selected
-    
+
     # 選ばれていないカードを取得
     not_selected = [c for c in candidates if c not in selected]
-    
+
     # 現在選択中のsource_idセット（重複チェック用）
     def get_selected_source_ids(cards):
-        return {c.get('source_id') for c in cards if c.get('source_id') is not None}
-    
+        return {c.get("source_id") for c in cards if c.get("source_id") is not None}
+
     # 入れ替え試行（最大5回）
     for _ in range(5):
         if abs(current_blanks - target) < 1:
             break
-        
+
         selected_source_ids = get_selected_source_ids(selected)
-        
+
         if current_blanks > target:
             # 穴埋めが多いカードを少ないカードに入れ替え
-            high_blank_cards = sorted(selected, key=lambda c: c.get('blank_count', 1), reverse=True)
-            low_blank_candidates = sorted(not_selected, key=lambda c: c.get('blank_count', 1))
-            
+            high_blank_cards = sorted(
+                selected, key=lambda c: c.get("blank_count", 1), reverse=True
+            )
+            low_blank_candidates = sorted(
+                not_selected, key=lambda c: c.get("blank_count", 1)
+            )
+
             for high_card in high_blank_cards:
                 for low_card in low_blank_candidates:
-                    low_card_source_id = low_card.get('source_id')
+                    low_card_source_id = low_card.get("source_id")
                     # 入れ替え対象のsource_idが既に選択済みならスキップ
-                    if low_card_source_id is not None and low_card_source_id in selected_source_ids:
-                        if low_card_source_id != high_card.get('source_id'):
+                    if (
+                        low_card_source_id is not None
+                        and low_card_source_id in selected_source_ids
+                    ):
+                        if low_card_source_id != high_card.get("source_id"):
                             continue  # 異なるsource_idが既に存在 → スキップ
-                    
-                    if low_card.get('blank_count', 1) < high_card.get('blank_count', 1):
+
+                    if low_card.get("blank_count", 1) < high_card.get("blank_count", 1):
                         # 入れ替え
                         selected = [c for c in selected if c != high_card] + [low_card]
-                        not_selected = [c for c in not_selected if c != low_card] + [high_card]
-                        current_blanks = sum(c.get('blank_count', 1) for c in selected)
+                        not_selected = [c for c in not_selected if c != low_card] + [
+                            high_card
+                        ]
+                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
         else:
             # 穴埋めが少ないカードを多いカードに入れ替え
-            low_blank_cards = sorted(selected, key=lambda c: c.get('blank_count', 1))
-            high_blank_candidates = sorted(not_selected, key=lambda c: c.get('blank_count', 1), reverse=True)
-            
+            low_blank_cards = sorted(selected, key=lambda c: c.get("blank_count", 1))
+            high_blank_candidates = sorted(
+                not_selected, key=lambda c: c.get("blank_count", 1), reverse=True
+            )
+
             for low_card in low_blank_cards:
                 for high_card in high_blank_candidates:
-                    high_card_source_id = high_card.get('source_id')
+                    high_card_source_id = high_card.get("source_id")
                     # 入れ替え対象のsource_idが既に選択済みならスキップ
-                    if high_card_source_id is not None and high_card_source_id in selected_source_ids:
-                        if high_card_source_id != low_card.get('source_id'):
+                    if (
+                        high_card_source_id is not None
+                        and high_card_source_id in selected_source_ids
+                    ):
+                        if high_card_source_id != low_card.get("source_id"):
                             continue  # 異なるsource_idが既に存在 → スキップ
-                    
-                    if high_card.get('blank_count', 1) > low_card.get('blank_count', 1):
+
+                    if high_card.get("blank_count", 1) > low_card.get("blank_count", 1):
                         # 入れ替え
                         selected = [c for c in selected if c != low_card] + [high_card]
-                        not_selected = [c for c in not_selected if c != high_card] + [low_card]
-                        current_blanks = sum(c.get('blank_count', 1) for c in selected)
+                        not_selected = [c for c in not_selected if c != high_card] + [
+                            low_card
+                        ]
+                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
-    
+
     return selected[:limit]
+
 
 # ============ カテゴリ別カラースキーム ============
 
@@ -203,28 +229,29 @@ CATEGORY_GROUPS = {
     "民事系": ["民法", "商法", "民事訴訟法"],
     "刑事系": ["刑法", "刑事訴訟法"],
     "公法系": ["憲法", "行政法"],
-    "その他": ["その他"]
+    "その他": ["その他"],
 }
 
 # カラーパレット（ライトモード / ダークモード）
 CATEGORY_COLORS = {
     "民事系": {
         "light": {"bg": "#fecaca", "text": "#b91c1c", "border": "#fca5a5"},
-        "dark": {"bg": "#7f1d1d", "text": "#fca5a5", "border": "#991b1b"}
+        "dark": {"bg": "#7f1d1d", "text": "#fca5a5", "border": "#991b1b"},
     },
     "刑事系": {
         "light": {"bg": "#bfdbfe", "text": "#1d4ed8", "border": "#93c5fd"},
-        "dark": {"bg": "#1e3a5f", "text": "#93c5fd", "border": "#1e40af"}
+        "dark": {"bg": "#1e3a5f", "text": "#93c5fd", "border": "#1e40af"},
     },
     "公法系": {
         "light": {"bg": "#bbf7d0", "text": "#15803d", "border": "#86efac"},
-        "dark": {"bg": "#14532d", "text": "#86efac", "border": "#166534"}
+        "dark": {"bg": "#14532d", "text": "#86efac", "border": "#166534"},
     },
     "その他": {
         "light": {"bg": "#fef08a", "text": "#a16207", "border": "#fde047"},
-        "dark": {"bg": "#713f12", "text": "#fde047", "border": "#854d0e"}
-    }
+        "dark": {"bg": "#713f12", "text": "#fde047", "border": "#854d0e"},
+    },
 }
+
 
 def get_category_group(category):
     """科目名からカテゴリグループを取得"""
@@ -233,14 +260,15 @@ def get_category_group(category):
             return group
     return "その他"
 
+
 def get_category_colors(category, is_dark_mode=False):
     """
     カテゴリ名から色情報を取得
-    
+
     Args:
         category: 科目名（例: "民法", "刑法"）
         is_dark_mode: ダークモードかどうか
-    
+
     Returns:
         dict: {"bg": 背景色, "text": 文字色, "border": ボーダー色}
     """
@@ -248,22 +276,23 @@ def get_category_colors(category, is_dark_mode=False):
     mode = "dark" if is_dark_mode else "light"
     return CATEGORY_COLORS.get(group, CATEGORY_COLORS["その他"])[mode]
 
+
 def get_all_category_css():
     """全カテゴリのCSSクラスを生成"""
     css_rules = []
-    
+
     for group, colors in CATEGORY_COLORS.items():
         subjects = CATEGORY_GROUPS.get(group, [group])
         for subject in subjects:
             # ライトモード
             css_rules.append(f"""
     .category-{subject} {{
-        background-color: {colors['light']['bg']} !important;
-        color: {colors['light']['text']} !important;
-        border: 1px solid {colors['light']['border']} !important;
+        background-color: {colors["light"]["bg"]} !important;
+        color: {colors["light"]["text"]} !important;
+        border: 1px solid {colors["light"]["border"]} !important;
     }}
 """)
-    
+
     # ダークモード
     css_rules.append("    /* ダークモード用カテゴリ色 */")
     for group, colors in CATEGORY_COLORS.items():
@@ -271,11 +300,10 @@ def get_all_category_css():
         for subject in subjects:
             css_rules.append(f"""
     .dark-mode .category-{subject} {{
-        background-color: {colors['dark']['bg']} !important;
-        color: {colors['dark']['text']} !important;
-        border: 1px solid {colors['dark']['border']} !important;
+        background-color: {colors["dark"]["bg"]} !important;
+        color: {colors["dark"]["text"]} !important;
+        border: 1px solid {colors["dark"]["border"]} !important;
     }}
 """)
-    
-    return "\n".join(css_rules)
 
+    return "\n".join(css_rules)
