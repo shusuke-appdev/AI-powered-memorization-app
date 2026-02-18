@@ -35,7 +35,8 @@ def _load_cards_cached(user_id):
             "next_review": row.get("next_review", date.today().isoformat()),
             "source_id": row.get("source_id"),
             "blank_count": row.get("blank_count", 1),
-            "is_favorite": row.get("is_favorite", False)
+            "is_favorite": row.get("is_favorite", False),
+            "card_type": row.get("card_type")
         })
     
     return cards
@@ -52,7 +53,7 @@ def save_cards(user_id, cards):
     """指定ユーザーのカードを保存（一括更新用、通常は個別操作を使用）"""
     pass
 
-def add_card(user_id, question, answer, title="", category="その他", source_id=None, blank_count=1):
+def add_card(user_id, question, answer, title="", category="その他", source_id=None, blank_count=1, card_type=None):
     """カードを追加"""
     supabase = get_supabase()
     initial_state = get_initial_card_state()
@@ -67,7 +68,8 @@ def add_card(user_id, question, answer, title="", category="その他", source_i
         "interval": initial_state["interval"],
         "repetitions": initial_state["repetitions"],
         "next_review": initial_state["next_review"],
-        "blank_count": blank_count
+        "blank_count": blank_count,
+        "card_type": card_type
     }
     
     if source_id:
@@ -82,7 +84,7 @@ def add_card(user_id, question, answer, title="", category="その他", source_i
 
 # ============ 原文カード管理 ============
 
-def add_source_card(user_id, source_text, title="", category="その他"):
+def add_source_card(user_id, source_text, title="", category="その他", card_type=None):
     """原文カードを追加"""
     supabase = get_supabase()
     
@@ -90,7 +92,8 @@ def add_source_card(user_id, source_text, title="", category="その他"):
         "user_id": user_id,
         "source_text": source_text,
         "title": title,
-        "category": category
+        "category": category,
+        "card_type": card_type
     }).execute()
     
     # キャッシュをクリア
@@ -150,6 +153,28 @@ def delete_source_card(user_id, source_id):
     # キャッシュをクリア
     clear_source_cards_cache(user_id)
 
+def update_source_card(user_id, source_id, source_text=None, title=None, category=None, card_type=None):
+    """原文カードの内容を更新"""
+    supabase = get_supabase()
+    
+    update_data = {}
+    if source_text is not None:
+        update_data["source_text"] = source_text
+    if title is not None:
+        update_data["title"] = title
+    if category is not None:
+        update_data["category"] = category
+    if card_type is not None:
+        update_data["card_type"] = card_type
+    
+    if not update_data:
+        return
+    
+    supabase.table("source_cards").update(update_data).eq("id", source_id).eq("user_id", user_id).execute()
+    
+    # キャッシュをクリア
+    clear_source_cards_cache(user_id)
+
 def update_card_progress(user_id, card_id, stats):
     """カードの学習進捗を更新"""
     supabase = get_supabase()
@@ -164,16 +189,20 @@ def update_card_progress(user_id, card_id, stats):
     # キャッシュをクリア
     clear_cards_cache(user_id)
 
-def update_card_content(user_id, card_id, question, answer, title="", category="その他"):
+def update_card_content(user_id, card_id, question, answer, title="", category="その他", card_type=None):
     """カードの内容を更新"""
     supabase = get_supabase()
     
-    supabase.table("cards").update({
+    update_data = {
         "question": question,
         "answer": answer,
         "title": title,
         "category": category
-    }).eq("id", card_id).eq("user_id", user_id).execute()
+    }
+    if card_type is not None:
+        update_data["card_type"] = card_type
+    
+    supabase.table("cards").update(update_data).eq("id", card_id).eq("user_id", user_id).execute()
     
     # キャッシュをクリア
     clear_cards_cache(user_id)

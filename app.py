@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 import os
 from gemini_client import generate_flashcards, help_chat
-from storage import load_cards, add_card, update_card_progress, delete_card, update_card_content, delete_cards_batch, add_source_card, get_source_cards_by_ids, load_source_cards, delete_source_card, toggle_favorite
+from storage import load_cards, add_card, update_card_progress, update_card_content, delete_card, delete_cards_batch, add_source_card, load_source_cards, get_source_card, get_source_cards_by_ids, delete_source_card, update_source_card, toggle_favorite, toggle_favorite_by_source_id, get_favorite_cards
 from utils import calculate_next_review, select_hybrid_quota, get_category_colors, get_all_category_css, get_category_group
 from auth import register_user, authenticate_user, get_username, create_session, validate_session_token, delete_session, get_api_key, update_api_key, get_daily_quota_limit, update_daily_quota_limit
 from database import DatabaseConnectionError
@@ -371,7 +371,6 @@ def show_login_page():
             with st.form("login_form"):
                 username = st.text_input("ユーザー名", key="login_username")
                 password = st.text_input("パスワード", type="password", key="login_password")
-                remember_me = st.checkbox("ログイン状態を保持する", value=True)
                 
                 if st.form_submit_button("ログイン", type="primary", use_container_width=True):
                     success, message, user_id = authenticate_user(username, password)
@@ -379,10 +378,9 @@ def show_login_page():
                         st.session_state.user_id = user_id
                         st.session_state.username = username
                         
-                        if remember_me:
-                            # セッショントークンを作成してCookieに保存
-                            token = create_session(user_id)
-                            cookie_controller.set("session_token", token)
+                        # セッショントークンを作成してCookieに保存（常時有効）
+                        token = create_session(user_id)
+                        cookie_controller.set("session_token", token, max_age=30*24*60*60)
                         
                         st.success(message)
                         st.rerun()
@@ -407,7 +405,7 @@ def show_login_page():
                             
                             # 登録後も自動でログイン状態を保持
                             token = create_session(user_id)
-                            cookie_controller.set("session_token", token)
+                            cookie_controller.set("session_token", token, max_age=30*24*60*60)
                             
                             st.success(message)
                             st.rerun()
@@ -1356,6 +1354,8 @@ def show_main_app():
             st.session_state.add_card_title = ""
         if "add_card_text" not in st.session_state:
             st.session_state.add_card_text = ""
+        if "add_card_type" not in st.session_state:
+            st.session_state.add_card_type = ""
         if "widget_key_counter" not in st.session_state:
             st.session_state.widget_key_counter = 0
         
@@ -1370,20 +1370,24 @@ def show_main_app():
             if has_progress:
                 if st.button("🔄 クリア", type="secondary", use_container_width=True):
                     # 全ての関連セッション状態をクリア
-                    if "phrases" in st.session_state:
-                        del st.session_state.phrases
-                    if "selected_indices" in st.session_state:
-                        del st.session_state.selected_indices
-                    if "generated_cards" in st.session_state:
-                        del st.session_state.generated_cards
+                    for key in ["phrases", "selected_indices", "generated_cards", "prev_manual_text"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     # 入力フィールドもクリア
                     st.session_state.add_card_category = ""
                     st.session_state.add_card_title = ""
                     st.session_state.add_card_text = ""
+                    st.session_state.add_card_type = ""
+                    # ウィジェットを確実にリセット
+                    st.session_state.widget_key_counter += 1
                     st.rerun()
         
-        # Category selection
+        # Category and Type selection
         CATEGORIES = ["民法", "商法", "刑法", "憲法", "行政法", "民事訴訟法", "刑事訴訟法", "その他"]
+        CARD_TYPES = ["規範", "判例", "類型", "知識"]
+        BLANK_ENABLED_TYPES = ["規範", "判例"]  # 穴埋めあり
+        BLANK_DISABLED_TYPES = ["類型", "知識"]  # 穴埋めなし
+        
         CATEGORIES_WITH_PLACEHOLDER = ["-- カテゴリを選択 --"] + CATEGORIES
         current_idx = 0
         if st.session_state.add_card_category and st.session_state.add_card_category in CATEGORIES:
@@ -1391,6 +1395,18 @@ def show_main_app():
         selected_category_raw = st.selectbox("カテゴリ", CATEGORIES_WITH_PLACEHOLDER, index=current_idx, key=f"category_select_{st.session_state.widget_key_counter}")
         selected_category = selected_category_raw if selected_category_raw != "-- カテゴリを選択 --" else ""
         st.session_state.add_card_category = selected_category
+        
+        # タイプ選択
+        TYPES_WITH_PLACEHOLDER = ["-- タイプを選択 --"] + CARD_TYPES
+        type_idx = 0
+        if st.session_state.add_card_type and st.session_state.add_card_type in CARD_TYPES:
+            type_idx = TYPES_WITH_PLACEHOLDER.index(st.session_state.add_card_type)
+        selected_type_raw = st.selectbox("タイプ", TYPES_WITH_PLACEHOLDER, index=type_idx, key=f"type_select_{st.session_state.widget_key_counter}", help="規範/判例: 穴埋めあり、類型/知識: 穴埋めなし")
+        selected_type = selected_type_raw if selected_type_raw != "-- タイプを選択 --" else ""
+        st.session_state.add_card_type = selected_type
+        
+        # 穴埋め無効タイプかどうか
+        is_blank_disabled = selected_type in BLANK_DISABLED_TYPES
 
         # Title input with autocomplete disabled
         st.markdown("""
@@ -1404,65 +1420,106 @@ def show_main_app():
         card_title = st.text_input("カードのタイトル（共通）", value=st.session_state.add_card_title, placeholder="例: 不法行為, 契約総論", key=f"title_input_{st.session_state.widget_key_counter}", autocomplete="off")
         st.session_state.add_card_title = card_title
         
-        # ステップ1: テキスト入力
-        st.subheader("① テキストを入力")
-        
-        # 手動/AI切り替え
-        if "manual_mode" not in st.session_state:
-            st.session_state.manual_mode = False
-        
-        manual_mode = st.checkbox("✍️ 手動で穴埋め箇所を指定する（【】で囲む）", value=st.session_state.manual_mode, key="manual_mode_checkbox")
-        st.session_state.manual_mode = manual_mode
-        
-        if manual_mode:
-            st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
-        
-        source_text = st.text_area(
-            "",
-            value=st.session_state.add_card_text,
-            height=200,
-            placeholder="例: 民法第709条は不法行為による損害賠償を規定している。\n\n手動モード時: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
-            key=f"text_input_{st.session_state.widget_key_counter}",
-            label_visibility="collapsed"
-        )
-        st.session_state.add_card_text = source_text
-        
-        # インポート
-        from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection, parse_blanks_from_text
-        
-        if manual_mode:
-            # 手動モード: 【】マーカーで直接カード生成
-            if st.button("✨ カード生成", type="primary", key="manual_generate_btn"):
+        # 穴埋め無効タイプの場合はシンプルな保存フロー
+        if is_blank_disabled:
+            st.subheader("① テキストを入力")
+            st.info(f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。")
+            
+            source_text = st.text_area(
+                "",
+                value=st.session_state.add_card_text,
+                height=200,
+                placeholder="原文テキストを入力してください。",
+                key=f"text_input_{st.session_state.widget_key_counter}",
+                label_visibility="collapsed"
+            )
+            st.session_state.add_card_text = source_text
+            
+            if st.button("💾 保存", type="primary", key="save_no_blank_btn"):
                 if not source_text:
                     st.warning("テキストを入力してください。")
-                elif "【" not in source_text or "】" not in source_text:
-                    st.warning("【】で穴埋め箇所を指定してください。例: 民法【709条】は...")
                 else:
-                    cards = parse_blanks_from_text(source_text)
-                    if cards:
-                        st.session_state.generated_cards = cards
-                        st.success(f"{len(cards)} 枚のカードを生成しました！")
-                    else:
-                        st.error("カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。")
+                    # 原文カードを保存
+                    source_id = add_source_card(user_id, source_text, title=card_title, category=selected_category, card_type=selected_type)
+                    # 穴埋めなしカード: 原文をそのままquestionに、answerは空
+                    add_card(user_id, source_text, "", title=card_title, category=selected_category, source_id=source_id, blank_count=0, card_type=selected_type)
+                    st.success("保存しました！")
+                    # クリア
+                    st.session_state.add_card_category = ""
+                    st.session_state.add_card_title = ""
+                    st.session_state.add_card_text = ""
+                    st.session_state.add_card_type = ""
+                    st.session_state.widget_key_counter += 1
+                    st.rerun()
         else:
-            # AIモード: 文節分割ボタン
-            if st.button("📝 テキストを解析", type="primary"):
-                if not source_text:
-                    st.warning("テキストを入力してください。")
-                elif not api_key:
-                    st.warning("APIキーを設定してください。")
-                else:
-                    with st.spinner("AIがテキストを解析中..."):
-                        phrases = split_into_phrases(source_text, api_key)
-                        # エラーチェック
-                        if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
-                            st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
-                        elif phrases:
-                            st.session_state.phrases = phrases
-                            st.session_state.selected_indices = []
-                            st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
+            # 穴埋めありタイプ（規範/判例/未選択）のフロー
+            # ステップ1: テキスト入力
+            st.subheader("① テキストを入力")
+            
+            # 手動/AI切り替え
+            if "manual_mode" not in st.session_state:
+                st.session_state.manual_mode = False
+            
+            manual_mode = st.checkbox("✍️ 手動で穴埋め箇所を指定する（【】で囲む）", value=st.session_state.manual_mode, key="manual_mode_checkbox")
+            st.session_state.manual_mode = manual_mode
+            
+            if manual_mode:
+                st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
+            
+            source_text = st.text_area(
+                "",
+                value=st.session_state.add_card_text,
+                height=200,
+                placeholder="例: 民法第709条は不法行為による損害賠償を規定している。\n\n手動モード時: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
+                key=f"text_input_{st.session_state.widget_key_counter}",
+                label_visibility="collapsed"
+            )
+            st.session_state.add_card_text = source_text
+            
+            # 手動モードでテキストが変更されたら生成済みカードをクリア
+            if manual_mode and "generated_cards" in st.session_state:
+                prev_text = st.session_state.get("prev_manual_text", "")
+                if source_text != prev_text:
+                    del st.session_state.generated_cards
+                    st.info("テキストが変更されました。再度「カード生成」を押してください。")
+            if manual_mode:
+                st.session_state.prev_manual_text = source_text
+        
+            # インポート
+            from gemini_client import split_into_phrases, suggest_blanks, generate_cards_from_selection, parse_blanks_from_text
+            if manual_mode:
+                # 手動モード: 【】マーカーで直接カード生成
+                if st.button("✨ カード生成", type="primary", key="manual_generate_btn"):
+                    if not source_text:
+                        st.warning("テキストを入力してください。")
+                    elif "【" not in source_text or "】" not in source_text:
+                        st.warning("【】で穴埋め箇所を指定してください。例: 民法【709条】は...")
+                    else:
+                        cards = parse_blanks_from_text(source_text)
+                        if cards:
+                            st.session_state.generated_cards = cards
+                            st.success(f"{len(cards)} 枚のカードを生成しました！")
                         else:
-                            st.error("テキストの解析に失敗しました。")
+                            st.error("カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。")
+            else:
+                # AIモード: 文節分割ボタン
+                if st.button("📝 テキストを解析", type="primary"):
+                    if not source_text:
+                        st.warning("テキストを入力してください。")
+                    elif not api_key:
+                        st.warning("APIキーを設定してください。")
+                    else:
+                        with st.spinner("AIがテキストを解析中..."):
+                            phrases = split_into_phrases(source_text, api_key)
+                            # エラーチェック
+                            if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
+                                st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
+                            elif phrases:
+                                st.session_state.phrases = phrases
+                                st.session_state.selected_indices = []
+                                st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
+                            else:
+                                st.error("テキストの解析に失敗しました。")
         
         # ステップ2: 穴埋め箇所を選択
         if "phrases" in st.session_state and st.session_state.phrases:
@@ -1616,16 +1673,16 @@ def show_main_app():
                         original_text = st.session_state.add_card_text if "add_card_text" in st.session_state else ""
                         source_id = None
                         if original_text:
-                            source_id = add_source_card(user_id, original_text, title=card_title, category=selected_category)
+                            source_id = add_source_card(user_id, original_text, title=card_title, category=selected_category, card_type=selected_type)
                         
                         # 穴埋めカードを保存
                         count = 0
                         blank_count = len(cards_to_save)  # 穴埋め箇所の数
-                        for card in cards_to_save:
+                        for i, card in enumerate(cards_to_save):
                             if card['question'] and card['answer']:
                                 add_card(user_id, card['question'], card['answer'], 
                                         title=card_title, category=selected_category,
-                                        source_id=source_id, blank_count=blank_count)
+                                        source_id=source_id, blank_count=blank_count, card_type=selected_type)
                                 count += 1
                         
                         st.success(f"{count} 枚のカードを保存しました！（原文カードも保存済み）")
@@ -1690,8 +1747,14 @@ def show_main_app():
             # 統計表示
             st.markdown(f"**原文カード: {len(source_cards)} 件 / 暗記カード: {len(cards)} 枚**")
             
-            # 検索ボックス
-            search_query = st.text_input("🔍 検索", placeholder="原文、問題、答えで検索...", key="unified_search")
+            # フィルタ用カラム
+            filter_col1, filter_col2 = st.columns([2, 1])
+            with filter_col1:
+                search_query = st.text_input("🔍 検索", placeholder="原文、問題、答えで検索...", key="unified_search")
+            with filter_col2:
+                CARD_TYPES = ["規範", "判例", "類型", "知識"]
+                TYPES_FILTER = ["すべて"] + CARD_TYPES
+                selected_type_filter = st.selectbox("タイプ絞り込み", TYPES_FILTER, key="manage_type_filter")
             
             # カテゴリタブ
             tabs = st.tabs(CATEGORIES)
@@ -1700,6 +1763,10 @@ def show_main_app():
                 with tabs[i]:
                     # このカテゴリの原文カードをフィルタ
                     category_sources = [s for s in source_cards if s.get("category", "その他") == category]
+                    
+                    # タイプフィルタ適用
+                    if selected_type_filter != "すべて":
+                        category_sources = [s for s in category_sources if s.get("card_type") == selected_type_filter]
                     
                     # 検索フィルタ
                     if search_query:
@@ -1738,8 +1805,24 @@ def show_main_app():
                                     key=f"edit_source_{source_id}"
                                 )
                                 
-                                # 原文が変更されたか検出
+                                # メタデータ編集（タイプ・カテゴリ）
+                                meta_col1, meta_col2 = st.columns(2)
+                                with meta_col1:
+                                    current_type = sc.get("card_type")
+                                    type_index = 0
+                                    if current_type in CARD_TYPES:
+                                        type_index = CARD_TYPES.index(current_type)
+                                    new_type = st.selectbox("タイプ", CARD_TYPES, index=type_index, key=f"edit_type_{source_id}")
+                                with meta_col2:
+                                    # カテゴリ変更
+                                    cat_index = CATEGORIES.index(category) if category in CATEGORIES else 0
+                                    new_category = st.selectbox("カテゴリ", CATEGORIES, index=cat_index, key=f"edit_cat_{source_id}")
+                                
+                                #変更検知
                                 source_modified = edited_source != source_text
+                                type_modified = new_type != sc.get("card_type")
+                                cat_modified = new_category != category
+                                
                                 
                                 # 紐づき暗記カード
                                 if linked_cards:
@@ -1750,9 +1833,9 @@ def show_main_app():
                                     for j, card in enumerate(linked_cards):
                                         col1, col2, col3 = st.columns([5, 5, 1])
                                         with col1:
-                                            new_q = st.text_input(f"問題 {j+1}", value=card['question'], key=f"q_{card['id']}")
+                                            new_q = st.text_area(f"問題 {j+1}", value=card['question'], key=f"q_{card['id']}", height=80)
                                         with col2:
-                                            new_a = st.text_input(f"答え {j+1}", value=card['answer'], key=f"a_{card['id']}")
+                                            new_a = st.text_area(f"答え {j+1}", value=card['answer'], key=f"a_{card['id']}", height=80)
                                         with col3:
                                             st.markdown("")  # スペーサー
                                             if st.button("🗑️", key=f"del_single_{card['id']}", help="このカードのみ削除"):
@@ -1763,9 +1846,8 @@ def show_main_app():
                                         if new_q != card['question'] or new_a != card['answer']:
                                             cards_modified = True
                                     
-                                    # 警告: 原文が変更されているのに暗記カードが変更されていない
-                                    if source_modified and not cards_modified:
-                                        st.warning("⚠️ 原文が変更されていますが、暗記カードが更新されていません。")
+                                    
+                                    # 警告削除: 原文が変更されている場合は自動保存されるため警告不要
                                 
                                 # 操作ボタン
                                 st.markdown("---")
@@ -1777,16 +1859,27 @@ def show_main_app():
                                 
                                 with btn_col1:
                                     if st.button("💾 保存", key=f"save_source_{source_id}", type="primary", use_container_width=True):
-                                        # 原文更新（簡易実装：削除→再作成はせず、今回はそのまま）
-                                        # TODO: update_source_card関数が必要な場合は追加
+                                        # 原文・メタデータ更新
+                                        if source_modified or type_modified or cat_modified:
+                                            update_source_card(user_id, source_id, 
+                                                             source_text=edited_source if source_modified else None,
+                                                             category=new_category if cat_modified else None,
+                                                             card_type=new_type if type_modified else None)
+                                            st.success("原文/メタデータを更新しました")
                                         
                                         # 暗記カード更新
                                         updated_count = 0
                                         for card in linked_cards:
                                             new_q = st.session_state.get(f"q_{card['id']}", card['question'])
                                             new_a = st.session_state.get(f"a_{card['id']}", card['answer'])
-                                            if new_q != card['question'] or new_a != card['answer']:
-                                                update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), card.get('category', 'その他'))
+                                            
+                                            # 変更があるか、親のメタデータが変更された場合
+                                            if (new_q != card['question'] or new_a != card['answer'] or 
+                                                type_modified or cat_modified):
+                                                update_card_content(user_id, card['id'], new_q, new_a, 
+                                                                  card.get('title', ''), 
+                                                                  new_category, # 新しいカテゴリ
+                                                                  new_type)     # 新しいタイプ
                                                 updated_count += 1
                                         
                                         if updated_count > 0:
@@ -1833,10 +1926,17 @@ def show_main_app():
                                     with st.form(key=f"orphan_form_{card['id']}"):
                                         new_q = st.text_input("問題", value=card['question'])
                                         new_a = st.text_input("答え", value=card['answer'])
-                                        new_cat = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")))
+                                        
+                                        col_cat, col_type = st.columns(2)
+                                        with col_cat:
+                                            new_cat = st.selectbox("カテゴリ", CATEGORIES, index=CATEGORIES.index(card.get("category", "その他")))
+                                        with col_type:
+                                            current_type_orphan = card.get("card_type")
+                                            type_idx_orphan = CARD_TYPES.index(current_type_orphan) if current_type_orphan in CARD_TYPES else 0
+                                            new_type_orphan = st.selectbox("タイプ", CARD_TYPES, index=type_idx_orphan, key=f"orphan_type_{card['id']}")
                                         
                                         if st.form_submit_button("✓ 更新"):
-                                            update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), new_cat)
+                                            update_card_content(user_id, card['id'], new_q, new_a, card.get('title', ''), new_cat, card_type=new_type_orphan)
                                             st.success("更新しました")
                                             st.rerun()
                                     

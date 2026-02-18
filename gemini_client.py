@@ -1,7 +1,7 @@
 import re
 import random
 import json
-from itertools import combinations
+import math
 
 # ============ AI文節分割 ============
 
@@ -209,6 +209,8 @@ def generate_cards_from_selection(phrases, selected_indices):
     """
     選択された文節を穴埋めにしてカードを生成（隣接ブロックは結合）
     
+    全穴埋め箇所を必ずカバーし、1カードあたり最大5箇所を穴埋めにする。
+    
     Args:
         phrases (list): 文節のリスト
         selected_indices (list): 穴埋めにする文節のインデックス
@@ -222,6 +224,8 @@ def generate_cards_from_selection(phrases, selected_indices):
     # 隣接する選択をグループ化
     groups = merge_adjacent_selections(phrases, selected_indices)
     num_blanks = len(groups)  # 結合後の穴埋め箇所数
+    
+    BLANKS_PER_CARD = 5  # 1カードあたりの穴埋め箇所数
     
     cards = []
     
@@ -257,52 +261,22 @@ def generate_cards_from_selection(phrases, selected_indices):
             "answer": " / ".join(answers)
         }
     
-    if num_blanks <= 3:
-        # 3箇所以下: 1枚のカード
+    if num_blanks <= BLANKS_PER_CARD:
+        # 5箇所以下: 1枚のカードで全箇所をカバー
         cards.append(build_card_from_groups(groups))
     else:
-        # 4箇所以上: 穴埋め箇所数に応じてカード上限を設定
-        # 上限 = 穴埋め箇所数 - 2、ただし最大5枚
-        max_cards = min(num_blanks - 2, 5)
+        # 6箇所以上: 全箇所をカバーしつつ、各カード最大5箇所
+        num_cards = math.ceil(num_blanks / BLANKS_PER_CARD)
         
-        all_combos = list(combinations(range(len(groups)), min(3, num_blanks)))
+        # グループインデックスをシャッフルしてランダムに分配
+        group_indices = list(range(num_blanks))
+        random.shuffle(group_indices)
         
-        selected_combos = []
-        covered = set()
-        
-        shuffled_combos = all_combos.copy()
-        random.shuffle(shuffled_combos)
-        
-        # 全ての穴埋め箇所をカバー
-        for combo in shuffled_combos:
-            if covered == set(range(num_blanks)):
-                break
-            new_coverage = set(combo) - covered
-            if new_coverage:
-                selected_combos.append(combo)
-                covered.update(combo)
-            if len(selected_combos) >= max_cards:
-                break
-        
-        # 未カバーがあれば追加
-        while covered != set(range(num_blanks)) and len(selected_combos) < max_cards:
-            uncovered = set(range(num_blanks)) - covered
-            for combo in shuffled_combos:
-                if any(i in uncovered for i in combo):
-                    if combo not in selected_combos:
-                        selected_combos.append(combo)
-                        covered.update(combo)
-                        break
-            else:
-                break
-        
-        # 上限まで追加
-        remaining = [c for c in shuffled_combos if c not in selected_combos]
-        while len(selected_combos) < max_cards and remaining:
-            selected_combos.append(remaining.pop(0))
-        
-        # カード生成
-        for combo in selected_combos:
+        # 均等に分割（各カードに割り当て）
+        for card_idx in range(num_cards):
+            start = card_idx * BLANKS_PER_CARD
+            end = min(start + BLANKS_PER_CARD, num_blanks)
+            combo = sorted(group_indices[start:end])
             target_groups = [groups[i] for i in combo]
             cards.append(build_card_from_groups(target_groups))
     
