@@ -1424,9 +1424,9 @@ def show_main_app():
             is_fav = current_card.get("is_favorite", False)
             fav_star = "⭐" if is_fav else "☆"
 
-            # 新規追加：知識・類型カテゴリの場合は、問題文中の「答え」文字列をハイライト置換する
-            category = current_card.get("category", "その他")
-            is_highlight_mode = category in ["知識", "類型"]
+            # 修正：知識・類型カテゴリの場合は、問題文中の「答え」文字列をハイライト置換する
+            card_type = current_card.get("card_type")
+            is_highlight_mode = card_type in ["知識", "類型"]
             question_html = current_card["question"]
 
             if is_highlight_mode:
@@ -1639,18 +1639,46 @@ def show_main_app():
 
         # 穴埋め無効タイプの場合はシンプルな保存フロー
         if is_blank_disabled:
-            st.subheader("① テキストを入力")
-            st.info(f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。")
+            st.subheader("① テキストとハイライト語句を入力")
+            st.info(
+                f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。問題文中の特定の語句をハイライトしたい場合は以下で指定してください。"
+            )
 
             source_text = st.text_area(
-                "",
+                "原文テキスト",
                 value=st.session_state.add_card_text,
                 height=200,
-                placeholder="原文テキストを入力してください。",
+                placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
                 key=f"text_input_{st.session_state.widget_key_counter}",
-                label_visibility="collapsed",
             )
             st.session_state.add_card_text = source_text
+
+            # ハイライト語句の指定用入力欄
+            if "add_card_highlight" not in st.session_state:
+                st.session_state.add_card_highlight = ""
+
+            highlight_text = st.text_input(
+                "答え（ハイライトする語句）",
+                value=st.session_state.add_card_highlight,
+                placeholder="例: 不法行為 損害賠償",
+                help="複数の語句をハイライトする場合は、スペースで区切って入力してください。",
+                key=f"highlight_input_{st.session_state.widget_key_counter}",
+            )
+            st.session_state.add_card_highlight = highlight_text
+
+            # プレビュー表示
+            if source_text and highlight_text:
+                preview_q = source_text
+                keywords = [k.strip() for k in highlight_text.split() if k.strip()]
+                for kw in keywords:
+                    if kw and kw in preview_q:
+                        highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
+                        preview_q = preview_q.replace(kw, highlight_span)
+
+                st.markdown(
+                    f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'>**ハイライト表示プレビュー:** <br/> {preview_q}</div>",
+                    unsafe_allow_html=True,
+                )
 
             if st.button("💾 保存", type="primary", key="save_no_blank_btn"):
                 if not source_text:
@@ -1664,11 +1692,11 @@ def show_main_app():
                         category=selected_category,
                         card_type=selected_type,
                     )
-                    # 穴埋めなしカード: 原文をそのままquestionに、answerは空
+                    # 穴埋めなしカード: 原文をそのままquestionに、指定されたハイライト語句をanswerとして保存
                     add_card(
                         user_id,
                         source_text,
-                        "",
+                        highlight_text,
                         title=card_title,
                         category=selected_category,
                         source_id=source_id,
@@ -1681,6 +1709,7 @@ def show_main_app():
                     st.session_state.add_card_title = ""
                     st.session_state.add_card_text = ""
                     st.session_state.add_card_type = ""
+                    st.session_state.add_card_highlight = ""
                     st.session_state.widget_key_counter += 1
                     st.rerun()
         else:
@@ -1959,7 +1988,7 @@ def show_main_app():
                         )
                     with col2:
                         a_label = "答え"
-                        if selected_category in ["知識", "類型"]:
+                        if selected_type in ["知識", "類型"]:
                             a_label = "答え（ハイライトする語句）"
                         a = st.text_input(
                             a_label,
@@ -1971,7 +2000,7 @@ def show_main_app():
                     cards_to_save.append({"question": q, "answer": a})
 
                     # ハイライトのプレビュー表示を追加 (知識・類型カテゴリ時)
-                    if selected_category in ["知識", "類型"] and a:
+                    if selected_type in ["知識", "類型"] and a:
                         preview_q = q
                         keywords = [k.strip() for k in a.split() if k.strip()]
                         if not keywords:
@@ -2238,9 +2267,12 @@ def show_main_app():
                                                 height=80,
                                             )
                                         with col2:
-                                            # カテゴリが「知識」「類型」の場合はハイライト用である旨を明記
+                                            # カテゴリではなくタイプ（card_type）で「知識」「類型」を判定する
+                                            current_card_type = card.get(
+                                                "card_type", sc.get("card_type")
+                                            )
                                             a_label = f"答え {j + 1}"
-                                            if category in ["知識", "類型"]:
+                                            if current_card_type in ["知識", "類型"]:
                                                 a_label = f"答え {j + 1}（ハイライトする語句）"
 
                                             new_a = st.text_area(
