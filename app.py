@@ -38,6 +38,35 @@ from utils import (
     select_hybrid_quota,
 )
 
+
+def apply_highlight(text: str, keywords_input: str) -> str:
+    """カードの「知識」「類型」カテゴリ向けハイライト置換処理（複数キーワード・多重置換対応）"""
+    if not text or not keywords_input:
+        return text
+
+    import re
+
+    # 全角・半角スペース、読点、カンマ、中点で分割
+    keywords = [
+        k.strip() for k in re.split(r"[\s、，,・]+", keywords_input) if k.strip()
+    ]
+
+    # フィルタリングして空文字を除外
+    keywords = [kw for kw in keywords if kw]
+    if not keywords:
+        return text
+
+    # 文字列長の降順でソート（部分一致で短い語句が先に置換されてHTMLが壊れるのを防ぐ）
+    keywords = sorted(list(set(keywords)), key=len, reverse=True)
+
+    # 正規表現での一括置換（すでに置換されたHTMLタグ内部を再度置換しないよう1パスで処理）
+    escaped_keywords = [re.escape(kw) for kw in keywords]
+    pattern = r"(" + "|".join(escaped_keywords) + r")"
+
+    highlight_span = r'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">\1</span>'
+    return re.sub(pattern, highlight_span, text)
+
+
 # Page Config
 st.set_page_config(page_title="AI 暗記カード", page_icon="🧠", layout="wide")
 
@@ -1433,16 +1462,7 @@ def show_main_app():
                 answer_text = current_card["answer"]
                 # 解答を表示する状態（show_answer=True）のときだけハイライト表示する
                 if st.session_state.get("show_answer", False) and answer_text:
-                    # 改行や空白区切りで複数のキーワードが指定されている場合も考慮
-                    keywords = [k.strip() for k in answer_text.split() if k.strip()]
-                    if not keywords:
-                        keywords = [answer_text.strip()]
-
-                    for kw in keywords:
-                        if kw and kw in question_html:
-                            # 該当箇所をHTMLのspanタグで囲む（色はCSSの.flashcard-bg-知識 .flashcard-answer で指定されたものに合わせる）
-                            highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
-                            question_html = question_html.replace(kw, highlight_span)
+                    question_html = apply_highlight(question_html, answer_text)
 
             st.markdown(
                 f"""
@@ -1668,12 +1688,7 @@ def show_main_app():
 
             # プレビュー表示
             if source_text and highlight_text:
-                preview_q = source_text
-                keywords = [k.strip() for k in highlight_text.split() if k.strip()]
-                for kw in keywords:
-                    if kw and kw in preview_q:
-                        highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
-                        preview_q = preview_q.replace(kw, highlight_span)
+                preview_q = apply_highlight(source_text, highlight_text)
 
                 st.markdown(
                     f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'>**ハイライト表示プレビュー:** <br/> {preview_q}</div>",
@@ -2001,14 +2016,7 @@ def show_main_app():
 
                     # ハイライトのプレビュー表示を追加 (知識・類型カテゴリ時)
                     if selected_type in ["知識", "類型"] and a:
-                        preview_q = q
-                        keywords = [k.strip() for k in a.split() if k.strip()]
-                        if not keywords:
-                            keywords = [a.strip()]
-                        for kw in keywords:
-                            if kw and kw in preview_q:
-                                highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
-                                preview_q = preview_q.replace(kw, highlight_span)
+                        preview_q = apply_highlight(q, a)
 
                         st.markdown(
                             f"<div style='font-size: 0.9em; padding: 8px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'>**表示プレビュー:** <br/> {preview_q}</div>",
