@@ -86,7 +86,7 @@ st.markdown(
         padding: 40px;
         border-radius: 20px;
         box-shadow: 0 10px 25px var(--shadow-color);
-        text-align: center;
+        text-align: left;
         margin-bottom: 30px;
         border: 1px solid var(--border-color);
         transition: transform 0.2s;
@@ -1424,6 +1424,26 @@ def show_main_app():
             is_fav = current_card.get("is_favorite", False)
             fav_star = "⭐" if is_fav else "☆"
 
+            # 新規追加：知識・類型カテゴリの場合は、問題文中の「答え」文字列をハイライト置換する
+            category = current_card.get("category", "その他")
+            is_highlight_mode = category in ["知識", "類型"]
+            question_html = current_card["question"]
+
+            if is_highlight_mode:
+                answer_text = current_card["answer"]
+                # 解答を表示する状態（show_answer=True）のときだけハイライト表示する
+                if st.session_state.get("show_answer", False) and answer_text:
+                    # 改行や空白区切りで複数のキーワードが指定されている場合も考慮
+                    keywords = [k.strip() for k in answer_text.split() if k.strip()]
+                    if not keywords:
+                        keywords = [answer_text.strip()]
+
+                    for kw in keywords:
+                        if kw and kw in question_html:
+                            # 該当箇所をHTMLのspanタグで囲む（色はCSSの.flashcard-bg-知識 .flashcard-answer で指定されたものに合わせる）
+                            highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
+                            question_html = question_html.replace(kw, highlight_span)
+
             st.markdown(
                 f"""
             <div class="flashcard flashcard-bg-{current_card.get("category", "その他")}">
@@ -1431,8 +1451,8 @@ def show_main_app():
                 <div class="flashcard-category category-{current_card.get("category", "その他")}">
                     {fav_star} {current_card.get("category", "その他")}
                 </div>
-                <div class="flashcard-question">{current_card["question"]}</div>
-                {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) else ""}
+                <div class="flashcard-question">{question_html}</div>
+                {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) and not is_highlight_mode else ""}
             </div>
             """,
                 unsafe_allow_html=True,
@@ -1938,14 +1958,34 @@ def show_main_app():
                             placeholder="問題",
                         )
                     with col2:
+                        a_label = "答え"
+                        if selected_category in ["知識", "類型"]:
+                            a_label = "答え（ハイライトする語句）"
                         a = st.text_input(
-                            "答え",
+                            a_label,
                             value=card["answer"],
                             key=f"a_{i}",
                             label_visibility="collapsed",
                             placeholder="答え",
                         )
                     cards_to_save.append({"question": q, "answer": a})
+
+                    # ハイライトのプレビュー表示を追加 (知識・類型カテゴリ時)
+                    if selected_category in ["知識", "類型"] and a:
+                        preview_q = q
+                        keywords = [k.strip() for k in a.split() if k.strip()]
+                        if not keywords:
+                            keywords = [a.strip()]
+                        for kw in keywords:
+                            if kw and kw in preview_q:
+                                highlight_span = f'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">{kw}</span>'
+                                preview_q = preview_q.replace(kw, highlight_span)
+
+                        st.markdown(
+                            f"<div style='font-size: 0.9em; padding: 8px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'>**表示プレビュー:** <br/> {preview_q}</div>",
+                            unsafe_allow_html=True,
+                        )
+
                     st.markdown("---")
 
                 submit_col1, submit_col2 = st.columns([1, 4])
@@ -2198,8 +2238,13 @@ def show_main_app():
                                                 height=80,
                                             )
                                         with col2:
+                                            # カテゴリが「知識」「類型」の場合はハイライト用である旨を明記
+                                            a_label = f"答え {j + 1}"
+                                            if category in ["知識", "類型"]:
+                                                a_label = f"答え {j + 1}（ハイライトする語句）"
+
                                             new_a = st.text_area(
-                                                f"答え {j + 1}",
+                                                a_label,
                                                 value=card["answer"],
                                                 key=f"a_{card['id']}",
                                                 height=80,
