@@ -59,6 +59,17 @@ class TestCardGeneration(unittest.TestCase):
             # Ensure at least 1 blank
             self.assertGreater(card["question"].count("______"), 0)
 
+    def test_keep_punctuation_and_newlines(self):
+        # 記号や改行、スペースを含むテキストの分割とカード生成テスト
+        phrases = ["前段", "。\n", "中段", "：", "空白", " ", "後段"]
+        selected = [2]  # "中段" を穴埋めとする
+        cards = generate_cards_from_selection(phrases, selected)
+
+        self.assertEqual(len(cards), 1)
+        # 穴埋め箇所が正しく置換され、かつ他の文字（改行や記号、スペース）が失われていないか確認
+        self.assertEqual(cards[0]["question"], "前段。\n______：空白 後段")
+        self.assertEqual(cards[0]["answer"], "中段")
+
 
 if __name__ == "__main__":
     unittest.main()

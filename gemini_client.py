@@ -45,6 +45,7 @@ def split_into_phrases(text, api_key):
    - 動詞の活用語尾は動詞に含める
 5. 格助詞相当の表現（による、として、に対して、において等）は独立したブロックとして分割する
 6. 専門用語・法律用語・固有名詞は分割しない
+7. 【重要】改行（\n）やスペース（全角・半角）、記号（：「」等）は絶対に削除せず、そのまま独立したブロックとするか、前後のブロックに含めてください。分割されたブロックをすべて結合させると、入力テキストと完全に一致するようにしてください。
 
 【例1】
 入力: 「この点について、実行行為は構成要件的結果発生の現実的危険性を有する行為であり、かかる危険性は不作為によっても惹起されうるから、不作為も実行行為足りうる。」
@@ -92,14 +93,23 @@ def split_into_phrases(text, api_key):
 
 
 def simple_split(text):
-    """句読点とスペースで簡易分割"""
-    # 句読点の後で分割（句読点は前の部分に含める）
-    parts = re.split(r"(?<=[。、，．,.])", text)
+    """句読点と改行で簡易分割（空白や改行を維持する）"""
+    # 句読点や改行を維持するためにキャプチャグループを使用
+    parts = re.split(r"([。、，．,.！!？?\n]+)", text)
     result = []
+    current = ""
     for part in parts:
-        part = part.strip()
-        if part:
-            result.append(part)
+        if not part:
+            continue
+        current += part
+        # 区切り文字が含まれていればそこで１つの文節とする
+        if re.search(r"[。、，．,.！!？?\n]", part):
+            result.append(current)
+            current = ""
+
+    if current:
+        result.append(current)
+
     return result if result else [text]
 
 
@@ -127,7 +137,7 @@ def suggest_blanks(phrases, api_key):
 
         model = genai.GenerativeModel("gemini-2.5-flash")
 
-        # 句読点のセット（穴埋め対象外）
+        # 句読点・記号・空白のセット（穴埋め対象外）
         punctuation_set = {
             "。",
             "、",
@@ -143,13 +153,20 @@ def suggest_blanks(phrases, api_key):
             ":",
             "；",
             ";",
+            "「",
+            "」",
+            "（",
+            "）",
+            "(",
+            ")",
         }
 
-        # 文節にインデックスを付ける（句読点は除外して表示）
+        # 文節にインデックスを付ける（記号や空白しかない場合は除外して表示）
         indexed_phrases = []
         valid_indices = []
         for i, p in enumerate(phrases):
-            if p.strip() not in punctuation_set:
+            stripped_p = p.strip()
+            if stripped_p and stripped_p not in punctuation_set:
                 indexed_phrases.append(f"{i}: {p}")
                 valid_indices.append(i)
 
@@ -222,8 +239,26 @@ def merge_adjacent_selections(phrases, selected_indices):
         # 間にあるフレーズをチェック
         is_adjacent = True
         for j in range(prev_idx + 1, curr_idx):
-            # 句読点以外があれば隣接とみなさない
-            if phrases[j].strip() not in ["。", "、", "，", "．", ",", ".", ""]:
+            # 句読点・空白・記号以外があれば隣接とみなさない
+            phrase_stripped = phrases[j].strip()
+            if phrase_stripped and phrase_stripped not in [
+                "。",
+                "、",
+                "，",
+                "．",
+                ",",
+                ".",
+                "：",
+                ":",
+                "；",
+                ";",
+                "「",
+                "」",
+                "（",
+                "）",
+                "(",
+                ")",
+            ]:
                 is_adjacent = False
                 break
 

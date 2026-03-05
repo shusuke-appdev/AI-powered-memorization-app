@@ -163,6 +163,14 @@ st.markdown(
         background-color: rgba(254, 240, 138, 0.8) !important;
     }
     
+    /* フラッシュカード解答のハイライト（知識・類型） */
+    .flashcard-bg-知識 .flashcard-answer,
+    .flashcard-bg-類型 .flashcard-answer {
+        color: #dc2626 !important;
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    
     .flashcard:hover {
         transform: translateY(-2px);
         box-shadow: 0 15px 30px rgba(0,0,0,0.08);
@@ -174,6 +182,7 @@ st.markdown(
         color: var(--text-primary);
         margin-bottom: 20px;
         padding-top: 60px;
+        white-space: pre-wrap; /* 改行を適切に表示 */
     }
 
     .flashcard-answer {
@@ -183,6 +192,7 @@ st.markdown(
         padding-top: 20px;
         border-top: 2px dashed #f3f4f6;
         margin-top: 20px;
+        white-space: pre-wrap; /* 改行を適切に表示 */
     }
 
     .stButton button {
