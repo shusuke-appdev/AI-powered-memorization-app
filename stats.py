@@ -62,27 +62,39 @@ def calculate_statistics(cards, source_cards=None):
         if card.get("next_review", "") <= today:
             category_stats[category]["due"] += 1
 
-        # 難易度判定
+        # 難易度判定（ハイブリッドロジック）
         ef = card.get("ease_factor", 2.5)
-        if ef >= 2.5:
-            category_stats[category]["difficulty"]["easy"] += 1
-        elif ef >= 2.0:
-            category_stats[category]["difficulty"]["medium"] += 1
+        reps = card.get("repetitions", 0)
+        
+        if reps == 0:
+            diff_level = "medium"  # 未学習は普通扱い
+        elif ef < 2.0 or (ef < 2.5 and reps < 2):
+            diff_level = "hard"
+        elif ef >= 2.5 and reps >= 3:
+            diff_level = "easy"
         else:
-            category_stats[category]["difficulty"]["hard"] += 1
+            diff_level = "medium"
+            
+        category_stats[category]["difficulty"][diff_level] += 1
 
     # 全体の難易度分布（ease_factorベース）
     difficulty_distribution = {"easy": 0, "medium": 0, "hard": 0}
     total_ease = 0
     for card in cards:
         ef = card.get("ease_factor", 2.5)
+        reps = card.get("repetitions", 0)
         total_ease += ef
-        if ef >= 2.5:
-            difficulty_distribution["easy"] += 1
-        elif ef >= 2.0:
-            difficulty_distribution["medium"] += 1
+        
+        if reps == 0:
+            diff_level = "medium"
+        elif ef < 2.0 or (ef < 2.5 and reps < 2):
+            diff_level = "hard"
+        elif ef >= 2.5 and reps >= 3:
+            diff_level = "easy"
         else:
-            difficulty_distribution["hard"] += 1
+            diff_level = "medium"
+            
+        difficulty_distribution[diff_level] += 1
 
     average_ease_factor = total_ease / total_cards if total_cards > 0 else 2.5
 
@@ -117,20 +129,21 @@ def render_statistics_ui(stats, st_module):
     with col1:
         st.metric("📚 総カード数", stats["total_cards"])
     with col2:
-        st.metric("✅ 習得済み", stats["mastered_cards"])
+        st.metric("✅ 習得済み", stats["mastered_cards"], help="連続5回以上正解したカード数")
     with col3:
-        st.metric("📖 学習中", stats["learning_cards"])
+        st.metric("📖 学習中", stats["learning_cards"], help="学習開始済みだが習得に達していないカード数")
     with col4:
         st.metric("📅 本日復習", stats["due_today"])
 
     # 習得率プログレスバー
     if stats["total_cards"] > 0:
         st.progress(
-            stats["mastery_rate"] / 100, text=f"習得率: {stats['mastery_rate']}%"
+            stats["mastery_rate"] / 100, text=f"習得率: {stats['mastery_rate']}% （習得済み / 総カード数）"
         )
 
     # 難易度分布（シンプルなテキスト表示）
     st.markdown("**全体の難易度分布**")
+    st.caption("簡単：十分な連続正解があり定着しているカード / 普通：学習初期のカード / 難しい：復習間隔が詰まっている苦手カード")
     diff = stats["difficulty_distribution"]
     st.markdown(
         f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}"

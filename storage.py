@@ -42,6 +42,8 @@ def _load_cards_cached(user_id):
                 "blank_count": row.get("blank_count", 1),
                 "is_favorite": row.get("is_favorite", False),
                 "card_type": row.get("card_type"),
+                "rank": row.get("rank", "B"),
+                "highlighted_keywords": row.get("highlighted_keywords", ""),
             }
         )
 
@@ -72,6 +74,8 @@ def add_card(
     source_id=None,
     blank_count=1,
     card_type=None,
+    rank="B",
+    highlighted_keywords="",
 ):
     """カードを追加"""
     supabase = get_supabase()
@@ -89,6 +93,8 @@ def add_card(
         "next_review": initial_state["next_review"],
         "blank_count": blank_count,
         "card_type": card_type,
+        "rank": rank,
+        "highlighted_keywords": highlighted_keywords,
     }
 
     if source_id:
@@ -234,7 +240,7 @@ def update_card_progress(user_id, card_id, stats):
 
 
 def update_card_content(
-    user_id, card_id, question, answer, title="", category="その他", card_type=None
+    user_id, card_id, question, answer, title="", category="その他", card_type=None, rank=None, highlighted_keywords=None
 ):
     """カードの内容を更新"""
     supabase = get_supabase()
@@ -247,6 +253,10 @@ def update_card_content(
     }
     if card_type is not None:
         update_data["card_type"] = card_type
+    if rank is not None:
+        update_data["rank"] = rank
+    if highlighted_keywords is not None:
+        update_data["highlighted_keywords"] = highlighted_keywords
 
     supabase.table("cards").update(update_data).eq("id", card_id).eq(
         "user_id", user_id

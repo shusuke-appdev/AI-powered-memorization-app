@@ -1,0 +1,54 @@
+42: def apply_highlight(text: str, keywords_input: str) -> str:
+406: def check_auth():
+424: def show_login_page():
+438: username = st.text_input("ユーザー名", key="login_username")
+439: password = st.text_input(
+464: new_username = st.text_input("ユーザー名", key="register_username")
+465: new_password = st.text_input(
+468: confirm_password = st.text_input(
+471: new_api_key = st.text_input(
+503: def logout():
+523: def show_main_app():
+1145: new_api_key = st.text_input(
+1158: new_api_key = st.text_input(
+1199: "<div class='help-ai-title'>🤖 ヘルプAI</div>", unsafe_allow_html=True
+1211: "<div style='color: #6b7280; font-size: 13px; padding: 10px;'>💬 アプリの使い方について質問してください</div>",
+1218: f"<div class='chat-message user'>🧑 {msg['content']}</div>",
+1223: f"<div class='chat-message assistant'>🤖 {msg['content']}</div>",
+1229: user_question = st.text_area(
+1333: <div style="text-align: center; padding: 50px;">
+1374: <div class="flashcard flashcard-bg-{current_source.get("category", "その他")}">
+1375: {f'<div class="flashcard-title">{current_source.get("title", "")}</div>' if current_source.get("titl
+1376: {f'<div class="flashcard-category category-{current_source.get("category", "その他")}">{current_source.
+1377: <div class="flashcard-question" style="font-size: 18px; text-align: left;">{current_source.get("sour
+1469: <div class="flashcard flashcard-bg-{current_card.get("category", "その他")}">
+1470: {f'<div class="flashcard-title">{current_card.get("title", "")}</div>' if current_card.get("title") 
+1471: <div class="flashcard-category category-{current_card.get("category", "その他")}">
+1474: <div class="flashcard-question">{question_html}</div>
+1475: {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answe
+1489: "<div style='text-align: center; margin-bottom: 10px; color: #6b7280;'>どれくらい覚えていましたか？</div>",
+1495: def process_review(quality):
+1603: selected_category_raw = st.selectbox(
+1624: selected_type_raw = st.selectbox(
+1651: card_title = st.text_input(
+1667: source_text = st.text_area(
+1680: highlight_text = st.text_input(
+1694: f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; borde
+1751: source_text = st.text_area(
+1865: def toggle_phrase(idx):
+1897: f"<div class='phrase-grid'>{''.join(phrase_buttons_html)}</div>",
+1997: q = st.text_input(
+2008: a = st.text_input(
+2022: f"<div style='font-size: 0.9em; padding: 8px; background-color: #f9fafb; border-radius: 4px; border-
+2089: selected_category_audio = st.selectbox(
+2146: search_query = st.text_input(
+2154: selected_type_filter = st.selectbox(
+2223: edited_source = st.text_area(
+2237: new_type = st.selectbox(
+2250: new_category = st.selectbox(
+2271: new_q = st.text_area(
+2286: new_a = st.text_area(
+2449: new_q = st.text_input(
+2452: new_a = st.text_input(
+2458: new_cat = st.selectbox(
+2472: new_type_orphan = st.selectbox(

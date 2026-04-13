@@ -202,17 +202,30 @@ def get_daily_quota_limit(user_id):
     cache_key = f"daily_quota_{user_id}"
     if cache_key in st.session_state:
         return st.session_state[cache_key]
-    # デフォルト値を返す（DBにカラムがない場合のフォールバック）
-    st.session_state[cache_key] = DEFAULT_DAILY_QUOTA
-    return DEFAULT_DAILY_QUOTA
+    
+    supabase = get_supabase()
+    result = supabase.table("users").select("daily_quota").eq("id", user_id).execute()
+    
+    if result.data and result.data[0].get("daily_quota") is not None:
+        quota = result.data[0]["daily_quota"]
+    else:
+        quota = DEFAULT_DAILY_QUOTA
+        
+    st.session_state[cache_key] = quota
+    return quota
 
 
 def update_daily_quota_limit(user_id, limit):
-    """ユーザーの1日のノルマ上限を更新（セッションキャッシュのみ）"""
+    """ユーザーの1日のノルマ上限を更新（DBとセッションキャッシュ）"""
     import streamlit as st
 
+    supabase = get_supabase()
+    # intに変換して保存
+    limit = int(limit)
+    result = supabase.table("users").update({"daily_quota": limit}).eq("id", user_id).execute()
+    
     st.session_state[f"daily_quota_{user_id}"] = limit
-    return True
+    return bool(result.data)
 
 
 # ============ セッション管理 ============

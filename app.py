@@ -1190,6 +1190,8 @@ def show_main_app():
             )
             if new_quota != current_quota:
                 update_daily_quota_limit(user_id, new_quota)
+                # ノルマが変更されたら、本日のノルマカード一覧を再構成するためにキャッシュをクリア
+                st.session_state.quota_card_ids = None
                 st.rerun()
 
         st.markdown("---")
@@ -1459,28 +1461,33 @@ def show_main_app():
             question_html = current_card["question"]
 
             if is_highlight_mode:
-                answer_text = current_card["answer"]
-                # 解答を表示する状態（show_answer=True）のときだけハイライト表示する
-                if st.session_state.get("show_answer", False) and answer_text:
-                    question_html = apply_highlight(question_html, answer_text)
+                # 知識・類型は「答え確認」が不要なので、常にハイライトで表示して評価に進む
+                hl_keys = current_card.get("highlighted_keywords", "")
+                if hl_keys:
+                    question_html = apply_highlight(question_html, hl_keys)
+                show_eval_buttons = True
+            else:
+                # 一般カード：答えを見るボタンのあと評価
+                show_eval_buttons = st.session_state.get("show_answer", False)
+                if show_eval_buttons and current_card.get("answer"):
+                    # （オプション）解答に何か特定のハイライトがあればここで対応可能だが、基本はそのまま
+                    pass
 
-            st.markdown(
-                f"""
-            <div class="flashcard flashcard-bg-{current_card.get("category", "その他")}">
-                {f'<div class="flashcard-title">{current_card.get("title", "")}</div>' if current_card.get("title") else ""}
-                <div class="flashcard-category category-{current_card.get("category", "その他")}">
-                    {fav_star} {current_card.get("category", "その他")}
-                </div>
-                <div class="flashcard-question">{question_html}</div>
-                {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if st.session_state.get("show_answer", False) and not is_highlight_mode else ""}
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            # 複数行文字列のインデントをなくしてMarkdownのコードブロック扱いを回避する
+            card_html = f"""
+<div class="flashcard flashcard-bg-{current_card.get('category', 'その他')}">
+    {f'<div class="flashcard-title">{current_card.get("title", "")}</div>' if current_card.get("title") else ""}
+    <div class="flashcard-category category-{current_card.get('category', 'その他')}">
+        {fav_star} {current_card.get('category', 'その他')}
+    </div>
+    <div class="flashcard-question">{question_html}</div>
+    {f'<div class="flashcard-answer">{current_card["answer"]}</div>' if show_eval_buttons and not is_highlight_mode else ""}
+</div>
+"""
+            st.markdown(card_html, unsafe_allow_html=True)
 
-            # Buttons: お気に入り + 答えを見る (side by side)
-            # Buttons: 答えを見る
-            if not st.session_state.get("show_answer", False):
+            # Buttons: 答えを見る / どれくらい覚えていましたか
+            if not show_eval_buttons:
                 if st.button("答えを見る", type="primary", use_container_width=True):
                     st.session_state.show_answer = True
                     st.rerun()
@@ -1613,6 +1620,22 @@ def show_main_app():
         )
         st.session_state.add_card_category = selected_category
 
+        # ランク選択
+        RANKS = ["A+", "A", "B+", "B", "C"]
+        rank_idx = 3 # "B" default
+        if "add_card_rank" not in st.session_state:
+            st.session_state.add_card_rank = "B"
+        if st.session_state.add_card_rank in RANKS:
+            rank_idx = RANKS.index(st.session_state.add_card_rank)
+        selected_rank = st.selectbox(
+            "重要度ランク",
+            RANKS,
+            index=rank_idx,
+            key=f"rank_select_{st.session_state.widget_key_counter}",
+            help="ランクが高いものほど優先的にノルマに出題されます。"
+        )
+        st.session_state.add_card_rank = selected_rank
+
         # タイプ選択
         TYPES_WITH_PLACEHOLDER = ["-- タイプを選択 --"] + CARD_TYPES
         type_idx = 0
@@ -1707,16 +1730,18 @@ def show_main_app():
                         category=selected_category,
                         card_type=selected_type,
                     )
-                    # 穴埋めなしカード: 原文をそのままquestionに、指定されたハイライト語句をanswerとして保存
+                    # 穴埋めなしカード: 原文をそのままquestionになど保存
                     add_card(
                         user_id,
                         source_text,
-                        highlight_text,
+                        "",  # 類型知識はanswer不要とする
                         title=card_title,
                         category=selected_category,
                         source_id=source_id,
                         blank_count=0,
                         card_type=selected_type,
+                        rank=selected_rank,
+                        highlighted_keywords=highlight_text,
                     )
                     st.success("保存しました！")
                     # クリア
@@ -1725,6 +1750,7 @@ def show_main_app():
                     st.session_state.add_card_text = ""
                     st.session_state.add_card_type = ""
                     st.session_state.add_card_highlight = ""
+                    st.session_state.add_card_rank = "B"
                     st.session_state.widget_key_counter += 1
                     st.rerun()
         else:
@@ -2058,6 +2084,7 @@ def show_main_app():
                                     source_id=source_id,
                                     blank_count=blank_count,
                                     card_type=selected_type,
+                                    rank=selected_rank,
                                 )
                                 count += 1
 
@@ -2266,13 +2293,12 @@ def show_main_app():
 
                                     # cards_modified = False
                                     for j, card in enumerate(linked_cards):
-                                        col1, col2, col3 = st.columns([5, 5, 1])
+                                        col1, col2, col3, col4 = st.columns([4, 4, 2, 1])
                                         with col1:
                                             new_q = st.text_area(
                                                 f"問題 {j + 1}",
                                                 value=card["question"],
                                                 key=f"q_{card['id']}",
-                                                height=80,
                                             )
                                         with col2:
                                             # カテゴリではなくタイプ（card_type）で「知識」「類型」を判定する
@@ -2280,16 +2306,28 @@ def show_main_app():
                                                 "card_type", sc.get("card_type")
                                             )
                                             a_label = f"答え {j + 1}"
+                                            # 知識・類型なら answer（またはhighlighted_keywords）としてハイライト語を表示
+                                            val_a = card["answer"]
                                             if current_card_type in ["知識", "類型"]:
-                                                a_label = f"答え {j + 1}（ハイライトする語句）"
-
+                                                a_label = f"ハイライト語 {j + 1}"
+                                                val_a = card.get("highlighted_keywords", card.get("answer", ""))
+                                            
                                             new_a = st.text_area(
                                                 a_label,
-                                                value=card["answer"],
+                                                value=val_a,
                                                 key=f"a_{card['id']}",
-                                                height=80,
                                             )
                                         with col3:
+                                            RANKS = ["A+", "A", "B+", "B", "C"]
+                                            current_rank = card.get("rank", "B")
+                                            r_idx = RANKS.index(current_rank) if current_rank in RANKS else 3
+                                            new_r = st.selectbox(
+                                                f"ランク {j + 1}",
+                                                RANKS,
+                                                index=r_idx,
+                                                key=f"r_{card['id']}"
+                                            )
+                                        with col4:
                                             st.markdown("")  # スペーサー
                                             if st.button(
                                                 "🗑️",
@@ -2352,14 +2390,27 @@ def show_main_app():
                                             new_q = st.session_state.get(
                                                 f"q_{card['id']}", card["question"]
                                             )
+                                            fallback_a = card.get("highlighted_keywords", card.get("answer", "")) if card.get("card_type", sc.get("card_type")) in ["知識", "類型"] else card["answer"]
                                             new_a = st.session_state.get(
-                                                f"a_{card['id']}", card["answer"]
+                                                f"a_{card['id']}", fallback_a
                                             )
+                                            new_r = st.session_state.get(
+                                                f"r_{card['id']}", card.get("rank", "B")
+                                            )
+
+                                            c_type = new_type if type_modified else card.get("card_type", sc.get("card_type"))
+                                            ans_to_save = new_a
+                                            hl_to_save = card.get("highlighted_keywords", "")
+                                            if c_type in ["知識", "類型"]:
+                                                hl_to_save = new_a
+                                                ans_to_save = ""
 
                                             # 変更があるか、親のメタデータが変更された場合
                                             if (
                                                 new_q != card["question"]
-                                                or new_a != card["answer"]
+                                                or ans_to_save != card["answer"]
+                                                or hl_to_save != card.get("highlighted_keywords", "")
+                                                or new_r != card.get("rank", "B")
                                                 or type_modified
                                                 or cat_modified
                                             ):
@@ -2367,10 +2418,12 @@ def show_main_app():
                                                     user_id,
                                                     card["id"],
                                                     new_q,
-                                                    new_a,
+                                                    ans_to_save,
                                                     card.get("title", ""),
                                                     new_category,  # 新しいカテゴリ
                                                     new_type,
+                                                    rank=new_r,
+                                                    highlighted_keywords=hl_to_save
                                                 )  # 新しいタイプ
                                                 updated_count += 1
 

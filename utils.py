@@ -73,32 +73,25 @@ def get_initial_card_state():
 
 def select_hybrid_quota(due_cards, limit, all_cards):
     """
-    ハイブリッド最適化によるカード選択
+    ハイブリッド最適化によるカード選択（ランク対応・知識類型カード比率調整版）
 
     1. 同一source_idのカードを除外（1日1枚まで）
-    2. 前半(ceil): 苦手カード優先（低ease_factor順）
-    3. 後半(floor): 期限優先（古いnext_review順）
-    4. 総穴埋め数を目標値に調整
-
-    Args:
-        due_cards: 復習対象カードのリスト
-        limit: 1日の上限枚数
-        all_cards: 全カードリスト（平均blank_count計算用）
-
-    Returns:
-        選択されたカードのリスト
+    2. 知識・類型カードは全体の1/5を割り当て
+    3. 各グループごとに、ランク（重要度）と苦手/期限を組み合わせて選出
+    4. ランクA+は優先的に出題（出題頻度を高める）
     """
     if not due_cards:
         return []
 
-    # 1. 同一source_idのカードを除外（各source_idから1枚のみ）
-    # ※カード数に関わらず常に適用
+    # ランクの重み（数値が大きいほど優先的に出題）
+    RANK_WEIGHT = {"A+": 5, "A": 4, "B+": 3, "B": 2, "C": 1}
+
+    # 1. 同一source_idのカードを除外
     seen_source_ids = set()
     unique_cards = []
     for card in due_cards:
         source_id = card.get("source_id")
         if source_id is None:
-            # source_idがないカードはそのまま追加
             unique_cards.append(card)
         elif source_id not in seen_source_ids:
             seen_source_ids.add(source_id)
@@ -107,27 +100,69 @@ def select_hybrid_quota(due_cards, limit, all_cards):
     if len(unique_cards) <= limit:
         return unique_cards
 
-    # 2. ノルマを半分に分割（奇数時は苦手優先が多い）
-    difficulty_count = (limit + 1) // 2
-    deadline_count = limit - difficulty_count
+    # 2. 知識・類型カードと一般カードに分類
+    tk_cards = []
+    normal_cards = []
+    for c in unique_cards:
+        is_tk = c.get("category") in ["知識", "類型"] or c.get("card_type") in ["知識", "類型"]
+        if is_tk:
+            tk_cards.append(c)
+        else:
+            normal_cards.append(c)
 
-    # 苦手カード優先（低ease_factor順）
-    difficulty_sorted = sorted(unique_cards, key=lambda c: c.get("ease_factor", 2.5))
-    difficulty_cards = difficulty_sorted[:difficulty_count]
+    # 知識・類型カードの目標採用数 (1/5)
+    target_tk_count = limit // 5
+    actual_tk_count = min(target_tk_count, len(tk_cards))
+    actual_normal_count = min(limit - actual_tk_count, len(normal_cards))
+    
+    # normal_cardsが足りない場合はtk_cardsで補填
+    if actual_tk_count + actual_normal_count < limit:
+        actual_tk_count = min(len(tk_cards), limit - actual_normal_count)
 
-    # 期限優先（古いnext_review順）- 苦手カードとして選ばれなかったものから
-    remaining = [c for c in unique_cards if c not in difficulty_cards]
-    deadline_sorted = sorted(
-        remaining, key=lambda c: c.get("next_review", "9999-99-99")
-    )
-    deadline_cards = deadline_sorted[:deadline_count]
+    def select_group_cards(candidates, count):
+        if not candidates or count == 0:
+            return []
+        if len(candidates) <= count:
+            return candidates
 
-    selected = difficulty_cards + deadline_cards
+        diff_count = (count + 1) // 2
+        dead_count = count - diff_count
 
-    # 3. 総穴埋め数を目標値に調整
+        # 苦手優先：ランクが高く、かつease_factorが低いものを優先
+        # ランクの重みをマイナスにして降順（大きい順）と同等にし、次はease_factorの昇順
+        difficulty_sorted = sorted(
+            candidates,
+            key=lambda c: (
+                -RANK_WEIGHT.get(c.get("rank", "B"), 2),
+                c.get("ease_factor", 2.5)
+            )
+        )
+        difficulty_cards = difficulty_sorted[:diff_count]
+
+        # 期限優先：ランクが高く、かつnext_reviewが古いものを優先
+        remaining = [c for c in candidates if c not in difficulty_cards]
+        deadline_sorted = sorted(
+            remaining,
+            key=lambda c: (
+                -RANK_WEIGHT.get(c.get("rank", "B"), 2),
+                c.get("next_review", "9999-99-99")
+            )
+        )
+        deadline_cards = deadline_sorted[:dead_count]
+
+        return difficulty_cards + deadline_cards
+
+    selected_tk = select_group_cards(tk_cards, actual_tk_count)
+    selected_normal = select_group_cards(normal_cards, actual_normal_count)
+
+    selected = selected_tk + selected_normal
+
+    # 3. （オプション）総穴埋め数を目標値に調整
     if all_cards:
         avg_blank = sum(c.get("blank_count", 1) for c in all_cards) / len(all_cards)
         target_blanks = avg_blank * limit
+        # 調整時も、知識・類型の比率を大きく崩さない範囲で行うことが望ましいが
+        # 実装の簡略化のため現状のまま _adjust_to_target_blanks を通す
         selected = _adjust_to_target_blanks(
             selected, unique_cards, target_blanks, limit
         )
