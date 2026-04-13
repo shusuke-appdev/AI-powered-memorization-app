@@ -8,7 +8,7 @@ from datetime import date
 import streamlit as st
 
 from database import get_supabase
-from utils import get_initial_card_state
+from services.review_service import get_initial_card_state
 
 # キャッシュのTTL（秒）
 CACHE_TTL = 60

@@ -1,15 +1,47 @@
 """
-統計モジュール - 学習統計の計算と表示
+統計モジュール - 学習統計の計算と表示（重複ロジック排除版）
 """
+
+from __future__ import annotations
 
 import datetime
 from collections import defaultdict
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
 
+from config import MASTERY_THRESHOLD
 
-def calculate_statistics(cards, source_cards=None):
+# ============ 難易度判定（共通関数） ============
+
+
+def classify_difficulty(ease_factor: float, repetitions: int) -> str:
+    """
+    カードの難易度を分類
+
+    Args:
+        ease_factor: SM-2のEase Factor
+        repetitions: 連続正解回数
+
+    Returns:
+        "easy" | "medium" | "hard"
+    """
+    if repetitions == 0:
+        return "medium"
+    if ease_factor < 2.0 or (ease_factor < 2.5 and repetitions < 2):
+        return "hard"
+    if ease_factor >= 2.5 and repetitions >= 3:
+        return "easy"
+    return "medium"
+
+
+# ============ 統計計算 ============
+
+
+def calculate_statistics(
+    cards: list[dict[str, Any]], source_cards: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """
     カードデータから学習統計を計算
 
@@ -31,20 +63,19 @@ def calculate_statistics(cards, source_cards=None):
             "category_stats": {},
             "difficulty_distribution": {"easy": 0, "medium": 0, "hard": 0},
             "average_ease_factor": 2.5,
+            "mastery_rate": 0,
         }
 
     today = datetime.date.today().isoformat()
 
-    # 基本統計
     total_cards = len(cards)
-    mastered_cards = sum(1 for c in cards if c.get("repetitions", 0) >= 5)
-    learning_cards = sum(1 for c in cards if 0 < c.get("repetitions", 0) < 5)
+    mastered_cards = sum(1 for c in cards if c.get("repetitions", 0) >= MASTERY_THRESHOLD)
+    learning_cards = sum(1 for c in cards if 0 < c.get("repetitions", 0) < MASTERY_THRESHOLD)
     new_cards = sum(1 for c in cards if c.get("repetitions", 0) == 0)
     due_today = sum(1 for c in cards if c.get("next_review", "") <= today)
 
     # カテゴリ別統計
-    # total, mastered, due, difficulty(easy/medium/hard)
-    category_stats = defaultdict(
+    category_stats: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "total": 0,
             "mastered": 0,
@@ -53,47 +84,25 @@ def calculate_statistics(cards, source_cards=None):
         }
     )
 
+    difficulty_distribution: dict[str, int] = {"easy": 0, "medium": 0, "hard": 0}
+    total_ease = 0.0
+
     for card in cards:
         category = card.get("category", "その他")
+        ef = card.get("ease_factor", 2.5)
+        reps = card.get("repetitions", 0)
+        total_ease += ef
+
         category_stats[category]["total"] += 1
 
-        if card.get("repetitions", 0) >= 5:
+        if reps >= MASTERY_THRESHOLD:
             category_stats[category]["mastered"] += 1
         if card.get("next_review", "") <= today:
             category_stats[category]["due"] += 1
 
-        # 難易度判定（ハイブリッドロジック）
-        ef = card.get("ease_factor", 2.5)
-        reps = card.get("repetitions", 0)
-        
-        if reps == 0:
-            diff_level = "medium"  # 未学習は普通扱い
-        elif ef < 2.0 or (ef < 2.5 and reps < 2):
-            diff_level = "hard"
-        elif ef >= 2.5 and reps >= 3:
-            diff_level = "easy"
-        else:
-            diff_level = "medium"
-            
+        # 難易度判定（共通関数を使用 — 重複排除）
+        diff_level = classify_difficulty(ef, reps)
         category_stats[category]["difficulty"][diff_level] += 1
-
-    # 全体の難易度分布（ease_factorベース）
-    difficulty_distribution = {"easy": 0, "medium": 0, "hard": 0}
-    total_ease = 0
-    for card in cards:
-        ef = card.get("ease_factor", 2.5)
-        reps = card.get("repetitions", 0)
-        total_ease += ef
-        
-        if reps == 0:
-            diff_level = "medium"
-        elif ef < 2.0 or (ef < 2.5 and reps < 2):
-            diff_level = "hard"
-        elif ef >= 2.5 and reps >= 3:
-            diff_level = "easy"
-        else:
-            diff_level = "medium"
-            
         difficulty_distribution[diff_level] += 1
 
     average_ease_factor = total_ease / total_cards if total_cards > 0 else 2.5
@@ -108,23 +117,17 @@ def calculate_statistics(cards, source_cards=None):
         "category_stats": dict(category_stats),
         "difficulty_distribution": difficulty_distribution,
         "average_ease_factor": round(average_ease_factor, 2),
-        "mastery_rate": round(mastered_cards / total_cards * 100, 1)
-        if total_cards > 0
-        else 0,
+        "mastery_rate": round(mastered_cards / total_cards * 100, 1) if total_cards > 0 else 0,
     }
 
 
-def render_statistics_ui(stats, st_module):
-    """
-    Streamlit UIで統計を表示
+# ============ UI表示 ============
 
-    Args:
-        stats: calculate_statistics()の戻り値
-        st_module: streamlitモジュール
-    """
+
+def render_statistics_ui(stats: dict[str, Any], st_module: Any) -> None:
+    """Streamlit UIで統計を表示"""
     st = st_module
 
-    # メトリクス行
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📚 総カード数", stats["total_cards"])
@@ -135,85 +138,57 @@ def render_statistics_ui(stats, st_module):
     with col4:
         st.metric("📅 本日復習", stats["due_today"])
 
-    # 習得率プログレスバー
     if stats["total_cards"] > 0:
         st.progress(
-            stats["mastery_rate"] / 100, text=f"習得率: {stats['mastery_rate']}% （習得済み / 総カード数）"
+            stats["mastery_rate"] / 100,
+            text=f"習得率: {stats['mastery_rate']}% （習得済み / 総カード数）",
         )
 
-    # 難易度分布（シンプルなテキスト表示）
     st.markdown("**全体の難易度分布**")
     st.caption("簡単：十分な連続正解があり定着しているカード / 普通：学習初期のカード / 難しい：復習間隔が詰まっている苦手カード")
     diff = stats["difficulty_distribution"]
-    st.markdown(
-        f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}"
-    )
+    st.markdown(f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}")
 
     st.markdown("---")
 
-    # 教科別統計（グラフ表示）
     if stats["category_stats"]:
         st.subheader("📊 教科別 達成状況")
-
         categories = list(stats["category_stats"].items())
-
-        # 4列レイアウトで表示（gap=smallで間隔を狭く）
         cols = st.columns(4, gap="small")
-
         for idx, (cat_name, cat_data) in enumerate(categories):
             with cols[idx % 4]:
-                render_category_chart(st, cat_name, cat_data)
+                _render_category_chart(st, cat_name, cat_data)
 
 
-def render_category_chart(st, category, data):
+def _render_category_chart(st_module: Any, category: str, data: dict[str, Any]) -> None:
     """個別のカテゴリエリアを描画"""
+    st = st_module
     st.markdown(f"**{category}**")
 
-    # 基本情報の表示
     total = data["total"]
     mastery = round(data["mastered"] / total * 100, 1) if total > 0 else 0
     st.caption(f"総数: {total}枚 | 習得率: {mastery}% | 復習待ち: {data['due']}枚")
 
-    # 円グラフデータの作成
     diff_data = data["difficulty"]
 
-    # データフレーム作成（凡例の順序制御のため）
-    chart_df = pd.DataFrame(
-        [
-            {"Status": "簡単", "Count": diff_data["easy"], "Color": "#10b981"},  # Green
-            {
-                "Status": "普通",
-                "Count": diff_data["medium"],
-                "Color": "#f59e0b",
-            },  # Yellow/Orange
-            {"Status": "難しい", "Count": diff_data["hard"], "Color": "#ef4444"},  # Red
-        ]
-    )
+    chart_df = pd.DataFrame([
+        {"Status": "簡単", "Count": diff_data["easy"]},
+        {"Status": "普通", "Count": diff_data["medium"]},
+        {"Status": "難しい", "Count": diff_data["hard"]},
+    ])
 
-    # カウントが0の項目を除外（グラフを綺麗にするため）
     chart_df = chart_df[chart_df["Count"] > 0]
 
     if not chart_df.empty:
-        # 円グラフ用の鮮やかな原色を定義
-        VIVID_COLORS = {
-            "民法": "#dc2626",  # 鮮やかな赤
-            "商法": "#dc2626",
-            "民事訴訟法": "#dc2626",
-            "刑法": "#2563eb",  # 鮮やかな青
-            "刑事訴訟法": "#2563eb",
-            "憲法": "#16a34a",  # 鮮やかな緑
-            "行政法": "#16a34a",
-            "その他": "#ca8a04",  # 鮮やかな黄
-        }
+        # 難易度ごとの色を正しく適用（修正: 全セグメント同色問題を解消）
+        color_map = {"簡単": "#10b981", "普通": "#f59e0b", "難しい": "#ef4444"}
 
-        vivid_color = VIVID_COLORS.get(category, "#6b7280")
-
-        # 円グラフを教科色で作成
         fig = px.pie(
             chart_df,
             values="Count",
             names="Status",
-            color_discrete_sequence=[vivid_color] * len(chart_df),
+            color="Status",
+            color_discrete_map=color_map,
             hole=0.4,
         )
 
@@ -227,14 +202,11 @@ def render_category_chart(st, category, data):
                     x=0.5,
                     y=0.5,
                     font_size=14,
-                    font_color=vivid_color,
                     showarrow=False,
                 )
             ],
         )
-        fig.update_traces(
-            textposition="inside", textinfo="percent", textfont_color="white"
-        )
+        fig.update_traces(textposition="inside", textinfo="percent", textfont_color="white")
 
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{category}")
     else:

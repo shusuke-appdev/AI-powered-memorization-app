@@ -1,0 +1,7 @@
+/* ============ Mobile Responsive ============ */
+@media (max-width: 768px) {
+    .flashcard { padding: 20px; margin-bottom: 15px; }
+    .flashcard-question { font-size: 18px; padding-top: 45px; }
+    .flashcard-title { font-size: 16px; }
+    .stButton button { min-height: 48px; font-size: 16px; }
+}
