@@ -376,6 +376,10 @@ html, body, [class*="css"] {
 }
 
 /* ボタンスタイル */
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+
 [data-testid="stSidebar"] .stButton button {
     background: #64748b;
     color: white !important;

@@ -136,38 +136,75 @@ def select_hybrid_quota(
 def _select_group_cards(
     candidates: list[dict[str, Any]], count: int
 ) -> list[dict[str, Any]]:
-    """グループ内のカード選択（苦手優先＋期限優先のハイブリッド）"""
+    """グループ内のカード選択（科目均等ラウンドロビン ＋ 苦手優先・期限優先）"""
     if not candidates or count == 0:
         return []
     if len(candidates) <= count:
         return candidates
 
-    diff_count = (count + 1) // 2
-    dead_count = count - diff_count
+    # 1. カテゴリ（科目）ごとに分類する
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for c in candidates:
+        cat = c.get("category", "その他")
+        by_category.setdefault(cat, []).append(c)
 
-    # 苦手優先：ランクが高く、かつease_factorが低いものを優先
-    difficulty_sorted = sorted(
-        candidates,
-        key=lambda c: (
-            -RANK_WEIGHT.get(c.get("rank", "B"), 2),
-            c.get("ease_factor", DEFAULT_EASE_FACTOR),
-        ),
-    )
-    difficulty_cards = difficulty_sorted[:diff_count]
+    # 2. カテゴリ内のカードを重要度・習熟度で個別に優先度順に並べる
+    sorted_by_cat: dict[str, list[dict[str, Any]]] = {}
+    for cat, cards in by_category.items():
+        difficulty_sorted = sorted(
+            cards,
+            key=lambda c: (
+                -RANK_WEIGHT.get(c.get("rank", "B"), 2),
+                c.get("ease_factor", DEFAULT_EASE_FACTOR),
+            ),
+        )
+        deadline_sorted = sorted(
+            cards,
+            key=lambda c: (
+                -RANK_WEIGHT.get(c.get("rank", "B"), 2),
+                c.get("next_review", "9999-99-99"),
+            ),
+        )
 
-    # 期限優先：ランクが高く、かつnext_reviewが古いものを優先
-    difficulty_set = set(id(c) for c in difficulty_cards)
-    remaining = [c for c in candidates if id(c) not in difficulty_set]
-    deadline_sorted = sorted(
-        remaining,
-        key=lambda c: (
-            -RANK_WEIGHT.get(c.get("rank", "B"), 2),
-            c.get("next_review", "9999-99-99"),
-        ),
-    )
-    deadline_cards = deadline_sorted[:dead_count]
+        # 苦手優先と期限優先を交互に配置
+        ordered_cards: list[dict[str, Any]] = []
+        seen = set()
+        diff_idx = 0
+        dead_idx = 0
 
-    return difficulty_cards + deadline_cards
+        while len(ordered_cards) < len(cards):
+            if diff_idx < len(difficulty_sorted):
+                c = difficulty_sorted[diff_idx]
+                diff_idx += 1
+                if id(c) not in seen:
+                    ordered_cards.append(c)
+                    seen.add(id(c))
+            
+            if dead_idx < len(deadline_sorted):
+                c = deadline_sorted[dead_idx]
+                dead_idx += 1
+                if id(c) not in seen:
+                    ordered_cards.append(c)
+                    seen.add(id(c))
+                    
+        sorted_by_cat[cat] = ordered_cards
+
+    # 3. カテゴリ間で均等にラウンドロビンで抽出する
+    selected_cards: list[dict[str, Any]] = []
+    category_keys = list(sorted_by_cat.keys())
+    
+    while len(selected_cards) < count and category_keys:
+        for cat in list(category_keys):
+            if not sorted_by_cat[cat]:
+                # この科目のカードが尽きた場合は候補から外す
+                category_keys.remove(cat)
+                continue
+            
+            selected_cards.append(sorted_by_cat[cat].pop(0))
+            if len(selected_cards) == count:
+                break
+
+    return selected_cards
 
 
 def _adjust_to_target_blanks(
