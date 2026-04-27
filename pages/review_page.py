@@ -37,11 +37,26 @@ def render_review_page(user_id: str, api_key: str) -> None:
 
     reviewed_card_ids = set(st.session_state.get("reviewed_card_ids", []))
 
-    # その日のノルマカードIDが未設定なら初回選択
+    # その日のノルマカードIDが未設定なら選択（初回 or ノルマ変更時）
     if st.session_state.get("quota_card_ids") is None:
         all_due_cards = [c for c in cards if c["next_review"] <= today]
-        selected_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
-        st.session_state.quota_card_ids = [c["id"] for c in selected_cards]
+
+        if reviewed_card_ids:
+            # ノルマ変更: 既レビュー済みカードを保持し、不足分を追加選択
+            remaining_slots = max(0, daily_limit - len(reviewed_card_ids))
+            # 既レビュー済みを除いた候補から追加分を選択
+            unreviewed_due = [
+                c for c in all_due_cards if c["id"] not in reviewed_card_ids
+            ]
+            additional = select_hybrid_quota(unreviewed_due, remaining_slots, cards)
+            new_quota_ids = list(reviewed_card_ids) + [
+                c["id"] for c in additional
+            ]
+            st.session_state.quota_card_ids = new_quota_ids
+        else:
+            # 初回: 通常の選択
+            selected_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
+            st.session_state.quota_card_ids = [c["id"] for c in selected_cards]
 
     quota_card_ids = set(st.session_state.get("quota_card_ids", []))
     remaining_quota_ids = quota_card_ids - reviewed_card_ids
@@ -178,7 +193,9 @@ def _render_study_card(
 ) -> None:
     """学習カードの表示"""
     total_quota = len(st.session_state.get("quota_card_ids", []))
-    reviewed_count = st.session_state.get("reviewed_card_count", 0)
+    quota_ids_set = set(st.session_state.get("quota_card_ids", []))
+    reviewed_ids_set = set(st.session_state.get("reviewed_card_ids", []))
+    reviewed_count = len(quota_ids_set & reviewed_ids_set)
     remaining = len(due_cards)
     progress = reviewed_count / total_quota if total_quota > 0 else 0
     st.progress(
