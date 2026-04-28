@@ -139,17 +139,19 @@ def _render_help_chat(api_key: str) -> None:
 
 def _logout() -> None:
     """ログアウト処理"""
-    from streamlit_cookies_controller import CookieController
+    import time
 
     from auth import delete_session
 
-    cookie_controller = CookieController()
-    session_token = cookie_controller.get("session_token")
-    if session_token:
-        delete_session(session_token)
-        cookie_controller.remove("session_token")
+    cookie_controller = st.session_state.get("cookie_controller")
+    if cookie_controller:
+        session_token = cookie_controller.get("session_token")
+        if session_token:
+            delete_session(session_token)
+            cookie_controller.remove("session_token")
+            time.sleep(0.5)  # クッキー削除の反映を待つ
 
-    for key in ("user_id", "username"):
+    for key in ("user_id", "username", "cookie_controller"):
         if key in st.session_state:
             del st.session_state[key]
 

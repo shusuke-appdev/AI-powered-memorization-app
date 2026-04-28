@@ -25,8 +25,10 @@ from styles import apply_base_styles
 
 st.set_page_config(page_title="AI 暗記カード", page_icon="🧠", layout="wide")
 
-# Cookie Controller
-cookie_controller = CookieController()
+# Cookie Controller——シングルトンで予期しないrerunを防止
+if "cookie_controller" not in st.session_state:
+    st.session_state.cookie_controller = CookieController()
+cookie_controller = st.session_state.cookie_controller
 
 # ベーススタイルを適用
 apply_base_styles()

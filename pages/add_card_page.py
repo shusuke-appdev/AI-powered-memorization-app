@@ -86,6 +86,11 @@ def _clear_all_state() -> None:
     st.session_state.widget_key_counter += 1
 
 
+def _sync_widget_to_state(widget_key: str, state_key: str) -> None:
+    """on_changeコールバック: widgetの値をsession_stateにコピー"""
+    st.session_state[state_key] = st.session_state[widget_key]
+
+
 def _render_category_select() -> str:
     """カテゴリ選択"""
     categories_with_placeholder = ["-- カテゴリを選択 --"] + CATEGORIES
@@ -97,13 +102,15 @@ def _render_category_select() -> str:
         current_idx = categories_with_placeholder.index(
             st.session_state.add_card_category
         )
+    wkey = f"category_select_{st.session_state.widget_key_counter}"
     selected_raw = st.selectbox(
         "カテゴリ",
         categories_with_placeholder,
         index=current_idx,
-        key=f"category_select_{st.session_state.widget_key_counter}",
+        key=wkey,
     )
     selected = selected_raw if selected_raw != "-- カテゴリを選択 --" else ""
+    # rerun時にのみ同期（on_changeではなく毎回同期だが、selectboxの値変更以外ではrerunしない）
     st.session_state.add_card_category = selected
     return selected
 
@@ -111,11 +118,12 @@ def _render_category_select() -> str:
 def _render_rank_select() -> str:
     """ランク選択"""
     rank_idx = RANKS.index(st.session_state.add_card_rank) if st.session_state.add_card_rank in RANKS else 3
+    wkey = f"rank_select_{st.session_state.widget_key_counter}"
     selected = st.selectbox(
         "重要度ランク",
         RANKS,
         index=rank_idx,
-        key=f"rank_select_{st.session_state.widget_key_counter}",
+        key=wkey,
         help="ランクが高いものほど優先的にノルマに出題されます。",
     )
     st.session_state.add_card_rank = selected
@@ -131,11 +139,12 @@ def _render_type_select() -> str:
         and st.session_state.add_card_type in CARD_TYPES
     ):
         type_idx = types_with_placeholder.index(st.session_state.add_card_type)
+    wkey = f"type_select_{st.session_state.widget_key_counter}"
     selected_raw = st.selectbox(
         "タイプ",
         types_with_placeholder,
         index=type_idx,
-        key=f"type_select_{st.session_state.widget_key_counter}",
+        key=wkey,
         help="規範/判例: 穴埋めあり、類型/知識: 穴埋めなし",
     )
     selected = selected_raw if selected_raw != "-- タイプを選択 --" else ""
@@ -145,13 +154,19 @@ def _render_type_select() -> str:
 
 def _render_title_input() -> str:
     """タイトル入力"""
+    wkey = f"title_input_{st.session_state.widget_key_counter}"
+    # 初期値をwidgetキーにセット（keyが存在しない場合のみ）
+    if wkey not in st.session_state:
+        st.session_state[wkey] = st.session_state.add_card_title
     card_title = st.text_input(
         "カードのタイトル（共通）",
-        value=st.session_state.add_card_title,
         placeholder="例: 不法行為, 契約総論",
-        key=f"title_input_{st.session_state.widget_key_counter}",
+        key=wkey,
         autocomplete="off",
+        on_change=_sync_widget_to_state,
+        args=(wkey, "add_card_title"),
     )
+    # 同期（on_changeだけでなく初回ロード時も反映）
     st.session_state.add_card_title = card_title
     return card_title
 
@@ -169,21 +184,29 @@ def _render_no_blank_flow(
         f'📝 「{selected_type}」タイプ: 穴埋めなしで保存します。問題文中の特定の語句をハイライトしたい場合は以下で指定してください。'
     )
 
+    wkey = f"text_input_{st.session_state.widget_key_counter}"
+    if wkey not in st.session_state:
+        st.session_state[wkey] = st.session_state.add_card_text
     source_text = st.text_area(
         "原文テキスト",
-        value=st.session_state.add_card_text,
         height=200,
         placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
-        key=f"text_input_{st.session_state.widget_key_counter}",
+        key=wkey,
+        on_change=_sync_widget_to_state,
+        args=(wkey, "add_card_text"),
     )
     st.session_state.add_card_text = source_text
 
+    hl_wkey = f"highlight_input_{st.session_state.widget_key_counter}"
+    if hl_wkey not in st.session_state:
+        st.session_state[hl_wkey] = st.session_state.add_card_highlight
     highlight_text = st.text_input(
         "答え（ハイライトする語句）",
-        value=st.session_state.add_card_highlight,
         placeholder="例: 不法行為 損害賠償",
         help="複数の語句をハイライトする場合は、スペースで区切って入力してください。",
-        key=f"highlight_input_{st.session_state.widget_key_counter}",
+        key=hl_wkey,
+        on_change=_sync_widget_to_state,
+        args=(hl_wkey, "add_card_highlight"),
     )
     st.session_state.add_card_highlight = highlight_text
 
@@ -235,13 +258,17 @@ def _render_blank_flow(
     if manual_mode:
         st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
 
+    wkey = f"text_input_{st.session_state.widget_key_counter}"
+    if wkey not in st.session_state:
+        st.session_state[wkey] = st.session_state.add_card_text
     source_text = st.text_area(
         "",
-        value=st.session_state.add_card_text,
         height=200,
         placeholder="例: 民法第709条は不法行為による損害賠償を規定している。\n\n手動モード時: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
-        key=f"text_input_{st.session_state.widget_key_counter}",
+        key=wkey,
         label_visibility="collapsed",
+        on_change=_sync_widget_to_state,
+        args=(wkey, "add_card_text"),
     )
     st.session_state.add_card_text = source_text
 
