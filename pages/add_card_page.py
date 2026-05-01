@@ -339,6 +339,13 @@ def _render_ai_analyze(source_text: str, api_key: str) -> None:
 def _render_phrase_selection(api_key: str) -> None:
     """穴埋め箇所の選択UI"""
     st.subheader("② 穴埋め箇所を選択")
+
+    def _toggle_phrase(pidx: int) -> None:
+        if pidx in st.session_state.selected_indices:
+            st.session_state.selected_indices.remove(pidx)
+        else:
+            st.session_state.selected_indices.append(pidx)
+
     st.markdown("チェックを入れた箇所が穴埋め（______）になります。")
 
     phrases = st.session_state.phrases
@@ -359,7 +366,6 @@ def _render_phrase_selection(api_key: str) -> None:
                             st.error(f"⚠️ {suggested.get('message', 'APIの利用制限に達しました。')}")
                         else:
                             st.session_state.selected_indices = suggested
-                            st.rerun()
                     except QuotaExceededError as e:
                         st.error(f"⚠️ {e}")
             else:
@@ -397,12 +403,7 @@ def _render_phrase_selection(api_key: str) -> None:
                     is_selected = phrase_idx in st.session_state.selected_indices
                     btn_label = f"✓ {phrase_text}" if is_selected else phrase_text
                     btn_type = "primary" if is_selected else "secondary"
-                    if st.button(btn_label, key=f"toggle_{phrase_idx}", type=btn_type, use_container_width=True):
-                        if phrase_idx in st.session_state.selected_indices:
-                            st.session_state.selected_indices.remove(phrase_idx)
-                        else:
-                            st.session_state.selected_indices.append(phrase_idx)
-                        st.rerun()
+                    st.button(btn_label, key=f"toggle_{phrase_idx}", type=btn_type, use_container_width=True, on_click=_toggle_phrase, args=(phrase_idx,))
 
     # プレビュー
     selected = st.session_state.selected_indices.copy()

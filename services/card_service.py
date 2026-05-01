@@ -52,104 +52,20 @@ def merge_adjacent_selections(
     return groups
 
 
-def _get_adjacent_indices(idx: int, phrases: list[str]) -> set[int]:
-    """指定インデックスの隣接位置を算出（句読点透過）"""
-    adjacent: set[int] = set()
-    for direction in (-1, 1):
-        adj = idx + direction
-        while 0 <= adj < len(phrases):
-            stripped = phrases[adj].strip()
-            if not stripped or stripped in PUNCTUATION_SET:
-                adjacent.add(adj)
-                adj += direction
-            else:
-                adjacent.add(adj)
-                break
-    return adjacent
-
-
-def _get_filler_groups(
-    phrases: list[str],
-    existing_groups: list[list[int]],
-    count_needed: int,
-) -> list[list[int]]:
-    """
-    穴埋め箇所が不足している場合に、非選択の実質的文節からランダムに
-    追加の穴埋めグループを生成する。
-
-    既存穴埋め・他フィラーと隣接しない候補を優先的に選ぶことで、
-    build_card_from_groups で統合されて ______ が減ることを防ぐ。
-    フィラーを1つ選ぶたびに、そのフィラーの隣接位置も除外して
-    次のフィラーを選ぶ（逐次選択方式）。
-
-    Args:
-        phrases: 全文節リスト
-        existing_groups: 既存の穴埋めグループ
-        count_needed: 追加で必要なグループ数
-
-    Returns:
-        追加穴埋めグループのリスト
-    """
-    if count_needed <= 0:
-        return []
-
-    # 既存グループに含まれるインデックスを収集
-    used_indices: set[int] = set()
-    for g in existing_groups:
-        used_indices.update(g)
-
-    # 句読点・記号でない非選択文節を全候補として収集
-    all_candidates: list[int] = []
-    for i, phrase in enumerate(phrases):
-        if i in used_indices:
-            continue
-        stripped = phrase.strip()
-        if stripped and stripped not in PUNCTUATION_SET:
-            all_candidates.append(i)
-
-    if not all_candidates:
-        return []
-
-    # 既存穴埋めの隣接位置を算出
-    blocked: set[int] = set()
-    for idx in used_indices:
-        blocked.update(_get_adjacent_indices(idx, phrases))
-
-    # 逐次選択: 非隣接候補を1つ選ぶたびに、そのフィラーの隣接も除外
-    result: list[list[int]] = []
-
-    # Phase 1: 非隣接候補から選択
-    available = [c for c in all_candidates if c not in blocked]
-    random.shuffle(available)
-    for idx in available:
-        if len(result) >= count_needed:
-            break
-        if idx not in blocked:
-            result.append([idx])
-            # 選んだフィラーの隣接位置も除外
-            blocked.update(_get_adjacent_indices(idx, phrases))
-            blocked.add(idx)
-
-    # Phase 2: 不足分は隣接候補からフォールバック
-    if len(result) < count_needed:
-        remaining_candidates = [c for c in all_candidates if c not in {r[0] for r in result}]
-        random.shuffle(remaining_candidates)
-        for idx in remaining_candidates:
-            if len(result) >= count_needed:
-                break
-            result.append([idx])
-
-    return result
-
-
 def generate_cards_from_selection(
     phrases: list[str], selected_indices: list[int]
 ) -> list[dict[str, str]]:
     """
-    選択された文節を穴埋めにしてカードを生成（隣接ブロックは結合）
+    ユーザーが選択した文節のみを穴埋めにしてカードを生成する。
 
-    全穴埋め箇所を必ずカバーし、1カードあたり必ず BLANKS_PER_CARD(5) 箇所を穴埋めにする。
-    穴埋め箇所が5未満の場合は、非選択の文節からランダムに補完する。
+    穴埋め箇所はユーザー指定のもののみを使用し、アルゴリズム側で
+    勝手に穴埋め箇所を追加することは一切しない。
+
+    - 穴埋め箇所が5個以下: 指定された穴埋め箇所のみでカード1枚を生成
+    - 穴埋め箇所が6個以上: ceil(N/5)枚のカードを生成し、各カードに
+      ユーザー指定の穴埋め箇所から5箇所ずつ割り当てる。
+      最後のカードが5箇所未満になる場合は、他のカードに割り当て済みの
+      穴埋め箇所からランダムに補充し、必ず5箇所にする（カード間の重複は許容）。
     """
     if not selected_indices:
         return []
@@ -163,42 +79,42 @@ def generate_cards_from_selection(
         """指定されたグループを穴埋めにしてカードを作成"""
         question_parts: list[str] = []
         answers: list[str] = []
-        all_target_indices: set[int] = set()
-        for g in target_groups:
-            all_target_indices.update(g)
+
+        idx_to_group: dict[int, int] = {}
+        for group_idx, g in enumerate(target_groups):
+            for idx in g:
+                idx_to_group[idx] = group_idx
 
         current_answer: list[str] = []
-        in_blank = False
+        current_group_idx = -1
 
         for i, phrase in enumerate(phrases):
-            if i in all_target_indices:
-                if not in_blank:
+            if i in idx_to_group:
+                g_idx = idx_to_group[i]
+                if g_idx != current_group_idx:
+                    if current_group_idx != -1:
+                        answers.append("".join(current_answer))
+                        current_answer = []
                     question_parts.append("______")
-                    in_blank = True
+                    current_group_idx = g_idx
                 current_answer.append(phrase)
             else:
-                if in_blank and current_answer:
+                if current_group_idx != -1:
                     answers.append("".join(current_answer))
                     current_answer = []
-                    in_blank = False
+                    current_group_idx = -1
                 question_parts.append(phrase)
 
-        if current_answer:
+        if current_group_idx != -1:
             answers.append("".join(current_answer))
 
         return {"question": "".join(question_parts), "answer": " / ".join(answers)}
 
     if num_blanks <= BLANKS_PER_CARD:
-        # 穴埋め箇所が5未満の場合、非選択文節からランダムに補完
-        if num_blanks < BLANKS_PER_CARD:
-            filler_groups = _get_filler_groups(
-                phrases, groups, BLANKS_PER_CARD - num_blanks
-            )
-            all_groups = groups + filler_groups
-        else:
-            all_groups = groups
-        cards.append(build_card_from_groups(all_groups))
+        # 穴埋め箇所が5個以下: ユーザー指定の穴埋め箇所のみで1枚生成
+        cards.append(build_card_from_groups(groups))
     else:
+        # 穴埋め箇所が6個以上: 各カード5箇所ずつ割り当て
         num_cards = math.ceil(num_blanks / BLANKS_PER_CARD)
         group_indices = list(range(num_blanks))
         random.shuffle(group_indices)
@@ -206,16 +122,19 @@ def generate_cards_from_selection(
         for card_idx in range(num_cards):
             start = card_idx * BLANKS_PER_CARD
             end = min(start + BLANKS_PER_CARD, num_blanks)
-            card_group_indices = sorted(group_indices[start:end])
-            target_groups = [groups[i] for i in card_group_indices]
+            card_group_indices = group_indices[start:end]
 
-            # このカードの穴埋め箇所が5未満の場合（最後のカード等）、補完
-            if len(target_groups) < BLANKS_PER_CARD:
-                filler_groups = _get_filler_groups(
-                    phrases, target_groups, BLANKS_PER_CARD - len(target_groups)
+            # 最後のカードが5箇所未満の場合、他の穴埋め箇所から重複補充
+            if len(card_group_indices) < BLANKS_PER_CARD:
+                other_indices = [gi for gi in group_indices if gi not in card_group_indices]
+                supplement = random.sample(
+                    other_indices,
+                    min(BLANKS_PER_CARD - len(card_group_indices), len(other_indices)),
                 )
-                target_groups = target_groups + filler_groups
+                card_group_indices = card_group_indices + supplement
 
+            card_group_indices_sorted = sorted(card_group_indices)
+            target_groups = [groups[i] for i in card_group_indices_sorted]
             cards.append(build_card_from_groups(target_groups))
 
     return cards

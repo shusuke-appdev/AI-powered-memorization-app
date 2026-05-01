@@ -25,48 +25,8 @@ class TestSM2(unittest.TestCase):
 
 
 class TestCardGeneration(unittest.TestCase):
-    def test_small_blanks_with_enough_non_adjacent(self) -> None:
-        """穴埋め2箇所選択、十分な非隣接フィラー候補がある場合 → 5箇所に補完"""
-        # 20文節の中で2箇所(idx 0, 10)を選択 → 非隣接候補が多数あるので5箇所に
-        phrases = [f"W{i}" for i in range(20)]
-        selected = [0, 10]  # 2グループ、離れている
-        cards = generate_cards_from_selection(phrases, selected)
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["question"].count("______"), 5)
-
-    def test_exact_boundary(self) -> None:
-        """ちょうど5箇所の場合はフィラーなし"""
-        phrases = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
-        selected = [0, 2, 4, 6, 8]
-        cards = generate_cards_from_selection(phrases, selected)
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["question"].count("______"), 5)
-
-    def test_large_blanks_partition_all_five(self) -> None:
-        """12箇所 → 3カード、各カードは5箇所（フィラーで補完）"""
-        phrases = [str(i) for i in range(60)]  # 十分な長さ
-        selected = [i * 4 for i in range(12)]  # 間隔4で12グループ
-        cards = generate_cards_from_selection(phrases, selected)
-        self.assertEqual(len(cards), 3)
-        for card in cards:
-            self.assertEqual(card["question"].count("______"), 5)
-
-    def test_keep_punctuation_and_newlines(self) -> None:
-        """句読点・記号はフィラー候補にならない"""
-        phrases = ["前段", "。\n", "中段", "：", "空白", " ", "後段"]
-        selected = [2]  # "中段" のみ → 1グループ
-        cards = generate_cards_from_selection(phrases, selected)
-        self.assertEqual(len(cards), 1)
-        # 非隣接フィラー: "後段"(6) → 1個
-        # 隣接フィラー: "前段"(0), "空白"(4) → 2個
-        # → 1選択 + 1非隣接 + 2隣接 = 最大4箇所
-        blank_count = cards[0]["question"].count("______")
-        self.assertGreaterEqual(blank_count, 2)  # 最低でも選択+非隣接
-        self.assertLessEqual(blank_count, 4)     # フィラー候補3個 + 選択1個
-        self.assertIn("中段", cards[0]["answer"])
-
-    def test_single_blank_padded_with_spacing(self) -> None:
-        """1箇所のみ選択、十分な非隣接候補がある → 5箇所に補完"""
+    def test_single_blank_no_filler(self) -> None:
+        """1箇所のみ選択 → フィラーなし、穴埋め1箇所のカード1枚"""
         phrases = [
             "不法行為", "は", "、", "故意", "又は", "過失", "によって",
             "他人", "の", "権利", "又は", "法律上保護される利益", "を",
@@ -76,23 +36,71 @@ class TestCardGeneration(unittest.TestCase):
         selected = [3]  # "故意" のみ
         cards = generate_cards_from_selection(phrases, selected)
         self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["question"].count("______"), 5)
+        self.assertEqual(cards[0]["question"].count("______"), 1)
         self.assertIn("故意", cards[0]["answer"])
 
-    def test_fallback_to_adjacent_when_non_adjacent_insufficient(self) -> None:
-        """非隣接候補が不足する場合、隣接候補にフォールバック"""
-        # 5文節で真ん中1つ選択 → 非隣接フィラー候補がない → 隣接にフォールバック
-        phrases = ["A", "B", "C", "D", "E"]
-        selected = [2]  # "C" のみ → 1グループ
+    def test_three_blanks_no_filler(self) -> None:
+        """3箇所選択 → フィラーなし、穴埋め3箇所のカード1枚"""
+        phrases = ["A", "B", "C", "D", "E", "F", "G"]
+        selected = [0, 2, 6]
         cards = generate_cards_from_selection(phrases, selected)
         self.assertEqual(len(cards), 1)
-        # 隣接候補: A(0), B(1), D(3), E(4) → 全てが隣接
-        # 非隣接候補: なし
-        # → フォールバックで隣接候補から4個選択 → 1+4=5箇所
-        # ただし統合で減る可能性がある
-        blank_count = cards[0]["question"].count("______")
-        self.assertGreaterEqual(blank_count, 1)
-        self.assertIn("C", cards[0]["answer"])
+        self.assertEqual(cards[0]["question"].count("______"), 3)
+
+    def test_exact_five_blanks(self) -> None:
+        """ちょうど5箇所 → カード1枚、穴埋め5箇所"""
+        phrases = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+        selected = [0, 2, 4, 6, 8]
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["question"].count("______"), 5)
+
+    def test_six_blanks_two_cards(self) -> None:
+        """6箇所 → 2カード、各5箇所（重複あり）"""
+        phrases = [str(i) for i in range(20)]
+        selected = [0, 3, 6, 9, 12, 15]  # 6グループ
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 2)
+        # 1枚目は5箇所
+        self.assertEqual(cards[0]["question"].count("______"), 5)
+        # 2枚目も5箇所（残り1箇所＋他から4箇所補充で計5箇所）
+        self.assertEqual(cards[1]["question"].count("______"), 5)
+
+    def test_twelve_blanks_three_cards(self) -> None:
+        """12箇所 → 3カード、各5箇所（最後のカードは重複補充）"""
+        phrases = [str(i) for i in range(60)]
+        selected = [i * 4 for i in range(12)]  # 間隔4で12グループ
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 3)
+        for card in cards:
+            self.assertEqual(card["question"].count("______"), 5)
+
+    def test_all_blanks_covered(self) -> None:
+        """全ての穴埋め箇所が少なくとも1枚のカードに含まれる"""
+        phrases = [str(i) for i in range(30)]
+        selected = [1, 5, 9, 13, 17, 21, 25]  # 7グループ
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 2)
+        # 全ての選択された文節がいずれかのカードのanswerに含まれる
+        all_answers = " ".join(c["answer"] for c in cards)
+        for idx in selected:
+            self.assertIn(str(idx), all_answers)
+
+    def test_keep_punctuation_not_selected(self) -> None:
+        """句読点は穴埋め対象にならず、ユーザー選択のみ穴埋め"""
+        phrases = ["前段", "。\n", "中段", "：", "空白", " ", "後段"]
+        selected = [2]  # "中段" のみ
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["question"].count("______"), 1)
+        self.assertIn("中段", cards[0]["answer"])
+
+    def test_empty_selection(self) -> None:
+        """空の選択 → カードなし"""
+        phrases = ["A", "B", "C"]
+        selected: list[int] = []
+        cards = generate_cards_from_selection(phrases, selected)
+        self.assertEqual(len(cards), 0)
 
 
 if __name__ == "__main__":
