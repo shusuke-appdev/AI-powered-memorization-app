@@ -7,7 +7,7 @@ from __future__ import annotations
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-from auth import create_session, register_user, get_all_users, login_user_direct
+from auth import create_session, get_all_users, login_user_direct, register_user
 
 
 def show_login_page(cookie_controller: CookieController) -> None:

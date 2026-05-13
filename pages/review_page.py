@@ -48,25 +48,33 @@ def render_review_page(user_id: str, api_key: str) -> None:
 
     reviewed_card_ids: set[str] = set(st.session_state.get(_SK_REVIEWED_CARD_IDS, []))
 
-    # その日のノルマカードIDが未設定なら選択（初回 or ノルマ変更時）
-    if st.session_state.get(_SK_QUOTA_CARD_IDS) is None:
-        all_due_cards = [c for c in cards if c["next_review"] <= today]
+    # 期日カードの抽出（時刻付き文字列に対応するため先頭10文字だけで比較）
+    all_due_cards = [c for c in cards if str(c.get("next_review", ""))[:10] <= today]
 
-        if reviewed_card_ids:
-            # ノルマ変更: 既レビュー済みカードを保持し、不足分を追加選択
-            remaining_slots = max(0, daily_limit - len(reviewed_card_ids))
-            unreviewed_due = [
-                c for c in all_due_cards if c["id"] not in reviewed_card_ids
-            ]
-            additional = select_hybrid_quota(unreviewed_due, remaining_slots, cards)
-            new_quota_ids = list(reviewed_card_ids) + [
-                c["id"] for c in additional
-            ]
-            st.session_state[_SK_QUOTA_CARD_IDS] = new_quota_ids
-        else:
-            # 初回: 通常の選択
-            selected_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
-            st.session_state[_SK_QUOTA_CARD_IDS] = [c["id"] for c in selected_cards]
+    current_quota_ids = st.session_state.get(_SK_QUOTA_CARD_IDS)
+
+    # 補充が必要かどうかを判定
+    needs_replenish = False
+    if current_quota_ids is None:
+        needs_replenish = True
+    elif len(current_quota_ids) < daily_limit:
+        # 上限に達しておらず、かつ追加可能な due カードが存在するか
+        unselected_due = [c for c in all_due_cards if c["id"] not in current_quota_ids]
+        if unselected_due:
+            needs_replenish = True
+
+    if needs_replenish:
+        if current_quota_ids is None:
+            current_quota_ids = []
+            
+        # 新たに追加すべき枠数
+        remaining_slots = max(0, daily_limit - len(current_quota_ids))
+        
+        if remaining_slots > 0:
+            # まだ quota に選ばれていない due_cards を対象に選出
+            candidates = [c for c in all_due_cards if c["id"] not in current_quota_ids]
+            additional = select_hybrid_quota(candidates, remaining_slots, cards)
+            st.session_state[_SK_QUOTA_CARD_IDS] = current_quota_ids + [c["id"] for c in additional]
 
     quota_card_ids: set[str] = set(st.session_state.get(_SK_QUOTA_CARD_IDS, []))
     remaining_quota_ids = quota_card_ids - reviewed_card_ids
@@ -75,9 +83,7 @@ def render_review_page(user_id: str, api_key: str) -> None:
     due_cards = [
         cards_by_id[cid] for cid in remaining_quota_ids if cid in cards_by_id
     ]
-    due_cards.sort(key=lambda c: c.get("next_review", "9999-99-99"))
-
-    all_due_cards = [c for c in cards if c["next_review"] <= today]
+    due_cards.sort(key=lambda c: str(c.get("next_review", "9999-99-99"))[:10])
 
     if not due_cards:
         _render_completion(cards, all_due_cards, daily_limit, user_id)

@@ -4,14 +4,11 @@
 
 from __future__ import annotations
 
-import re
-
 import streamlit as st
 
 from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANKS
 from services.card_service import (
     apply_highlight,
-    generate_cards_from_selection,
     parse_blanks_from_text,
 )
 from storage import add_card, add_source_card

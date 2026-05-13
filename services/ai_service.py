@@ -5,8 +5,6 @@ AI サービスモジュール — Gemini API操作の統合管理
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
 from google import genai

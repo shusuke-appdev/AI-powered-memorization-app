@@ -11,9 +11,6 @@ import random
 import re
 from typing import Any
 
-
-
-
 from config import BLANKS_PER_CARD
 
 PUNCTUATION_SET: frozenset[str] = frozenset({

@@ -84,16 +84,25 @@ def select_hybrid_quota(
     if not due_cards:
         return []
 
-    # 1. 同一source_idのカードを除外
+    # 1. 同一source_idのカードを優先的に選出（1日1枚）し、不足分は同一ソースの別カードで補充
     seen_source_ids: set[str] = set()
-    unique_cards: list[dict[str, Any]] = []
+    primary_candidates: list[dict[str, Any]] = []
+    secondary_candidates: list[dict[str, Any]] = []
+
     for card in due_cards:
         source_id = card.get("source_id")
-        if source_id is None:
-            unique_cards.append(card)
+        if not source_id:  # None, "" などの場合は制限せず優先候補へ
+            primary_candidates.append(card)
         elif source_id not in seen_source_ids:
             seen_source_ids.add(source_id)
-            unique_cards.append(card)
+            primary_candidates.append(card)
+        else:
+            secondary_candidates.append(card)
+
+    unique_cards = primary_candidates.copy()
+    if len(unique_cards) < limit:
+        needed = limit - len(unique_cards)
+        unique_cards.extend(secondary_candidates[:needed])
 
     if len(unique_cards) <= limit:
         return unique_cards
