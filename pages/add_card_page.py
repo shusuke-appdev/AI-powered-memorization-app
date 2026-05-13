@@ -28,7 +28,7 @@ _SK_GENERATED_CARDS = "generated_cards"
 _SK_PREV_MANUAL_TEXT = "prev_manual_text"
 
 
-def render_add_card_page(user_id: str, api_key: str) -> None:
+def render_add_card_page(user_id: str) -> None:
     """カード追加タブを表示"""
     # セッション状態の初期化
     _init_session_state()
