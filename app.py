@@ -104,8 +104,10 @@ except DatabaseConnectionError as e:
 
         reset_connection()
         st.rerun()
-except Exception:
-    st.error("予期しないエラーが発生しました。")
+except Exception as e:
+    import traceback
+    st.error(f"予期しないエラーが発生しました: {e}")
+    st.code(traceback.format_exc())
     st.info("🔄 ページを再読み込みするか、サポートにお問い合わせください。")
     if st.button("再読み込み"):
         st.rerun()
