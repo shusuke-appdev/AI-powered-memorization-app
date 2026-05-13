@@ -77,7 +77,7 @@ def show_main_app() -> None:
         render_review_page(user_id, api_key)
 
     with tab2:
-        render_add_card_page(user_id, api_key)
+        render_add_card_page(user_id)
 
     with tab5:
         render_listen_page(user_id)

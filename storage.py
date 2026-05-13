@@ -3,7 +3,10 @@
 ユーザー別のカードデータ管理
 """
 
+from __future__ import annotations
+
 from datetime import date
+from typing import Any
 
 import streamlit as st
 
@@ -11,77 +14,75 @@ from database import get_supabase
 from services.review_service import get_initial_card_state
 
 # キャッシュのTTL（秒）
-CACHE_TTL = 60
+_CACHE_TTL: int = 60
 
 
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
-def _load_cards_cached(user_id):
+# ============ DTO変換 ============
+
+
+def _row_to_card(row: dict[str, Any]) -> dict[str, Any]:
+    """DBの行データをアプリ内カード形式に変換"""
+    return {
+        "id": row["id"],
+        "question": row["question"],
+        "answer": row["answer"],
+        "title": row.get("title", ""),
+        "category": row.get("category", "その他"),
+        "ease_factor": row.get("ease_factor", 2.5),
+        "interval": row.get("interval", 1),
+        "repetitions": row.get("repetitions", 0),
+        "next_review": row.get("next_review", date.today().isoformat()),
+        "source_id": row.get("source_id"),
+        "blank_count": row.get("blank_count", 1),
+        "is_favorite": row.get("is_favorite", False),
+        "card_type": row.get("card_type"),
+        "rank": row.get("rank", "B"),
+        "highlighted_keywords": row.get("highlighted_keywords", ""),
+    }
+
+
+# ============ 暗記カード管理 ============
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def _load_cards_cached(user_id: str) -> list[dict[str, Any]]:
     """キャッシュ付きでカードを読み込む（内部用）"""
     supabase = get_supabase()
-
     result = supabase.table("cards").select("*").eq("user_id", user_id).execute()
 
     if not result.data:
         return []
 
-    # データベースの形式をアプリの形式に変換
-    cards = []
-    for row in result.data:
-        cards.append(
-            {
-                "id": row["id"],
-                "question": row["question"],
-                "answer": row["answer"],
-                "title": row.get("title", ""),
-                "category": row.get("category", "その他"),
-                "ease_factor": row.get("ease_factor", 2.5),
-                "interval": row.get("interval", 1),
-                "repetitions": row.get("repetitions", 0),
-                "next_review": row.get("next_review", date.today().isoformat()),
-                "source_id": row.get("source_id"),
-                "blank_count": row.get("blank_count", 1),
-                "is_favorite": row.get("is_favorite", False),
-                "card_type": row.get("card_type"),
-                "rank": row.get("rank", "B"),
-                "highlighted_keywords": row.get("highlighted_keywords", ""),
-            }
-        )
-
-    return cards
+    return [_row_to_card(row) for row in result.data]
 
 
-def load_cards(user_id):
+def load_cards(user_id: str) -> list[dict[str, Any]]:
     """指定ユーザーのカードを読み込む"""
     return _load_cards_cached(user_id)
 
 
-def clear_cards_cache(user_id=None):
+def clear_cards_cache(user_id: str | None = None) -> None:
     """カードのキャッシュをクリア"""
     _load_cards_cached.clear()
 
 
-def save_cards(user_id, cards):
-    """指定ユーザーのカードを保存（一括更新用、通常は個別操作を使用）"""
-    pass
-
-
 def add_card(
-    user_id,
-    question,
-    answer,
-    title="",
-    category="その他",
-    source_id=None,
-    blank_count=1,
-    card_type=None,
-    rank="B",
-    highlighted_keywords="",
-):
+    user_id: str,
+    question: str,
+    answer: str,
+    title: str = "",
+    category: str = "その他",
+    source_id: str | None = None,
+    blank_count: int = 1,
+    card_type: str | None = None,
+    rank: str = "B",
+    highlighted_keywords: str = "",
+) -> str | None:
     """カードを追加"""
     supabase = get_supabase()
     initial_state = get_initial_card_state()
 
-    card_data = {
+    card_data: dict[str, Any] = {
         "user_id": user_id,
         "question": question,
         "answer": answer,
@@ -111,7 +112,13 @@ def add_card(
 # ============ 原文カード管理 ============
 
 
-def add_source_card(user_id, source_text, title="", category="その他", card_type=None):
+def add_source_card(
+    user_id: str,
+    source_text: str,
+    title: str = "",
+    category: str = "その他",
+    card_type: str | None = None,
+) -> str | None:
     """原文カードを追加"""
     supabase = get_supabase()
 
@@ -137,11 +144,10 @@ def add_source_card(user_id, source_text, title="", category="その他", card_t
     return None
 
 
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
-def _load_source_cards_cached(user_id):
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def _load_source_cards_cached(user_id: str) -> list[dict[str, Any]]:
     """キャッシュ付きで原文カードを読み込む（内部用）"""
     supabase = get_supabase()
-
     result = supabase.table("source_cards").select("*").eq("user_id", user_id).execute()
 
     if not result.data:
@@ -150,20 +156,19 @@ def _load_source_cards_cached(user_id):
     return result.data
 
 
-def load_source_cards(user_id):
+def load_source_cards(user_id: str) -> list[dict[str, Any]]:
     """原文カードを読み込む"""
     return _load_source_cards_cached(user_id)
 
 
-def clear_source_cards_cache(user_id=None):
+def clear_source_cards_cache(user_id: str | None = None) -> None:
     """原文カードのキャッシュをクリア"""
     _load_source_cards_cached.clear()
 
 
-def get_source_card(source_id):
+def get_source_card(source_id: str) -> dict[str, Any] | None:
     """特定の原文カードを取得"""
     supabase = get_supabase()
-
     result = supabase.table("source_cards").select("*").eq("id", source_id).execute()
 
     if result.data:
@@ -171,19 +176,18 @@ def get_source_card(source_id):
     return None
 
 
-def get_source_cards_by_ids(source_ids):
+def get_source_cards_by_ids(source_ids: list[str]) -> list[dict[str, Any]]:
     """複数の原文カードを取得"""
     if not source_ids:
         return []
 
     supabase = get_supabase()
-
     result = supabase.table("source_cards").select("*").in_("id", source_ids).execute()
 
     return result.data if result.data else []
 
 
-def delete_source_card(user_id, source_id):
+def delete_source_card(user_id: str, source_id: str) -> None:
     """原文カードを削除"""
     supabase = get_supabase()
 
@@ -196,12 +200,17 @@ def delete_source_card(user_id, source_id):
 
 
 def update_source_card(
-    user_id, source_id, source_text=None, title=None, category=None, card_type=None
-):
+    user_id: str,
+    source_id: str,
+    source_text: str | None = None,
+    title: str | None = None,
+    category: str | None = None,
+    card_type: str | None = None,
+) -> None:
     """原文カードの内容を更新"""
     supabase = get_supabase()
 
-    update_data = {}
+    update_data: dict[str, Any] = {}
     if source_text is not None:
         update_data["source_text"] = source_text
     if title is not None:
@@ -222,7 +231,10 @@ def update_source_card(
     clear_source_cards_cache(user_id)
 
 
-def update_card_progress(user_id, card_id, stats):
+# ============ カード更新 ============
+
+
+def update_card_progress(user_id: str, card_id: str, stats: dict[str, Any]) -> None:
     """カードの学習進捗を更新"""
     supabase = get_supabase()
 
@@ -240,12 +252,20 @@ def update_card_progress(user_id, card_id, stats):
 
 
 def update_card_content(
-    user_id, card_id, question, answer, title="", category="その他", card_type=None, rank=None, highlighted_keywords=None
-):
+    user_id: str,
+    card_id: str,
+    question: str,
+    answer: str,
+    title: str = "",
+    category: str = "その他",
+    card_type: str | None = None,
+    rank: str | None = None,
+    highlighted_keywords: str | None = None,
+) -> None:
     """カードの内容を更新"""
     supabase = get_supabase()
 
-    update_data = {
+    update_data: dict[str, Any] = {
         "question": question,
         "answer": answer,
         "title": title,
@@ -266,7 +286,7 @@ def update_card_content(
     clear_cards_cache(user_id)
 
 
-def delete_card(user_id, card_id):
+def delete_card(user_id: str, card_id: str) -> None:
     """カードを削除"""
     supabase = get_supabase()
 
@@ -276,7 +296,7 @@ def delete_card(user_id, card_id):
     clear_cards_cache(user_id)
 
 
-def delete_cards_batch(user_id, card_ids):
+def delete_cards_batch(user_id: str, card_ids: list[str]) -> None:
     """複数のカードを一括削除"""
     if not card_ids:
         return
@@ -292,7 +312,7 @@ def delete_cards_batch(user_id, card_ids):
     clear_cards_cache(user_id)
 
 
-def toggle_favorite(user_id, card_id, is_favorite):
+def toggle_favorite(user_id: str, card_id: str, is_favorite: bool) -> None:
     """カードのお気に入り状態をトグル"""
     supabase = get_supabase()
 
@@ -304,7 +324,9 @@ def toggle_favorite(user_id, card_id, is_favorite):
     clear_cards_cache(user_id)
 
 
-def toggle_favorite_by_source_id(user_id, source_id, is_favorite):
+def toggle_favorite_by_source_id(
+    user_id: str, source_id: str, is_favorite: bool
+) -> None:
     """原文IDに紐づく全てのカードのお気に入り状態をトグル"""
     supabase = get_supabase()
 
@@ -316,7 +338,7 @@ def toggle_favorite_by_source_id(user_id, source_id, is_favorite):
     clear_cards_cache(user_id)
 
 
-def get_favorite_cards(user_id):
+def get_favorite_cards(user_id: str) -> list[dict[str, Any]]:
     """お気に入りカードのみを取得"""
     cards = load_cards(user_id)
     return [c for c in cards if c.get("is_favorite", False)]

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import streamlit as st
 
@@ -18,6 +19,16 @@ from storage import (
     update_card_progress,
 )
 
+# セッション状態キー
+_SK_QUOTA_DATE = "quota_date"
+_SK_REVIEWED_SOURCE_IDS = "reviewed_source_ids"
+_SK_REVIEWED_CARD_IDS = "reviewed_card_ids"
+_SK_REVIEWED_CARD_COUNT = "reviewed_card_count"
+_SK_QUOTA_CARD_IDS = "quota_card_ids"
+_SK_CURRENT_CARD_INDEX = "current_card_index"
+_SK_SHOW_ANSWER = "show_answer"
+_SK_SOURCE_REVIEW_INDEX = "source_review_index"
+
 
 def render_review_page(user_id: str, api_key: str) -> None:
     """本日のノルマタブを表示"""
@@ -28,23 +39,22 @@ def render_review_page(user_id: str, api_key: str) -> None:
     daily_limit = get_daily_quota_limit(user_id)
 
     # 日付が変わったらセッションをリセット
-    if st.session_state.get("quota_date") != today:
-        st.session_state.quota_date = today
-        st.session_state.reviewed_source_ids = []
-        st.session_state.reviewed_card_ids = []
-        st.session_state.reviewed_card_count = 0
-        st.session_state.quota_card_ids = None
+    if st.session_state.get(_SK_QUOTA_DATE) != today:
+        st.session_state[_SK_QUOTA_DATE] = today
+        st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
+        st.session_state[_SK_REVIEWED_CARD_IDS] = []
+        st.session_state[_SK_REVIEWED_CARD_COUNT] = 0
+        st.session_state[_SK_QUOTA_CARD_IDS] = None
 
-    reviewed_card_ids = set(st.session_state.get("reviewed_card_ids", []))
+    reviewed_card_ids: set[str] = set(st.session_state.get(_SK_REVIEWED_CARD_IDS, []))
 
     # その日のノルマカードIDが未設定なら選択（初回 or ノルマ変更時）
-    if st.session_state.get("quota_card_ids") is None:
+    if st.session_state.get(_SK_QUOTA_CARD_IDS) is None:
         all_due_cards = [c for c in cards if c["next_review"] <= today]
 
         if reviewed_card_ids:
             # ノルマ変更: 既レビュー済みカードを保持し、不足分を追加選択
             remaining_slots = max(0, daily_limit - len(reviewed_card_ids))
-            # 既レビュー済みを除いた候補から追加分を選択
             unreviewed_due = [
                 c for c in all_due_cards if c["id"] not in reviewed_card_ids
             ]
@@ -52,16 +62,16 @@ def render_review_page(user_id: str, api_key: str) -> None:
             new_quota_ids = list(reviewed_card_ids) + [
                 c["id"] for c in additional
             ]
-            st.session_state.quota_card_ids = new_quota_ids
+            st.session_state[_SK_QUOTA_CARD_IDS] = new_quota_ids
         else:
             # 初回: 通常の選択
             selected_cards = select_hybrid_quota(all_due_cards, daily_limit, cards)
-            st.session_state.quota_card_ids = [c["id"] for c in selected_cards]
+            st.session_state[_SK_QUOTA_CARD_IDS] = [c["id"] for c in selected_cards]
 
-    quota_card_ids = set(st.session_state.get("quota_card_ids", []))
+    quota_card_ids: set[str] = set(st.session_state.get(_SK_QUOTA_CARD_IDS, []))
     remaining_quota_ids = quota_card_ids - reviewed_card_ids
 
-    cards_by_id = {c["id"]: c for c in cards}
+    cards_by_id: dict[str, dict[str, Any]] = {c["id"]: c for c in cards}
     due_cards = [
         cards_by_id[cid] for cid in remaining_quota_ids if cid in cards_by_id
     ]
@@ -76,8 +86,8 @@ def render_review_page(user_id: str, api_key: str) -> None:
 
 
 def _render_completion(
-    cards: list[dict],
-    all_due_cards: list[dict],
+    cards: list[dict[str, Any]],
+    all_due_cards: list[dict[str, Any]],
     daily_limit: int,
     user_id: str,
 ) -> None:
@@ -98,14 +108,14 @@ def _render_completion(
         )
 
     # ノルマ復習モード（原文カードレビュー）
-    reviewed_source_ids = st.session_state.get("reviewed_source_ids", [])
+    reviewed_source_ids: list[str] = st.session_state.get(_SK_REVIEWED_SOURCE_IDS, [])
     if reviewed_source_ids:
         _render_source_review(reviewed_source_ids, cards, user_id)
 
 
 def _render_source_review(
     reviewed_source_ids: list[str],
-    cards: list[dict],
+    cards: list[dict[str, Any]],
     user_id: str,
 ) -> None:
     """原文カード復習セクション"""
@@ -118,21 +128,21 @@ def _render_source_review(
     if not source_cards:
         st.info("原文カードが見つかりませんでした。")
         if st.button("クリア"):
-            st.session_state.reviewed_source_ids = []
+            st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
             st.rerun()
         return
 
-    if "source_review_index" not in st.session_state:
-        st.session_state.source_review_index = 0
+    if _SK_SOURCE_REVIEW_INDEX not in st.session_state:
+        st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
 
-    if st.session_state.source_review_index >= len(source_cards):
-        st.session_state.source_review_index = 0
+    if st.session_state[_SK_SOURCE_REVIEW_INDEX] >= len(source_cards):
+        st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
 
-    current_source = source_cards[st.session_state.source_review_index]
+    current_source = source_cards[st.session_state[_SK_SOURCE_REVIEW_INDEX]]
 
     st.progress(
-        (st.session_state.source_review_index + 1) / len(source_cards),
-        text=f"原文 {st.session_state.source_review_index + 1} / {len(source_cards)}",
+        (st.session_state[_SK_SOURCE_REVIEW_INDEX] + 1) / len(source_cards),
+        text=f"原文 {st.session_state[_SK_SOURCE_REVIEW_INDEX] + 1} / {len(source_cards)}",
     )
 
     category = current_source.get("category", "その他")
@@ -171,30 +181,30 @@ def _render_source_review(
 
     with nav_col2:
         if st.button("✓ 復習を終了", type="primary", use_container_width=True):
-            st.session_state.reviewed_source_ids = []
-            st.session_state.source_review_index = 0
+            st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
+            st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
             st.rerun()
 
     with nav_col3:
-        if st.session_state.source_review_index < len(source_cards) - 1:
+        if st.session_state[_SK_SOURCE_REVIEW_INDEX] < len(source_cards) - 1:
             if st.button("次へ ▶", use_container_width=True):
-                st.session_state.source_review_index += 1
+                st.session_state[_SK_SOURCE_REVIEW_INDEX] += 1
                 st.rerun()
-        elif st.session_state.source_review_index > 0:
+        elif st.session_state[_SK_SOURCE_REVIEW_INDEX] > 0:
             if st.button("◀ 前へ", use_container_width=True):
-                st.session_state.source_review_index -= 1
+                st.session_state[_SK_SOURCE_REVIEW_INDEX] -= 1
                 st.rerun()
 
 
 def _render_study_card(
-    due_cards: list[dict],
-    cards: list[dict],
+    due_cards: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
     user_id: str,
 ) -> None:
     """学習カードの表示"""
-    total_quota = len(st.session_state.get("quota_card_ids", []))
-    quota_ids_set = set(st.session_state.get("quota_card_ids", []))
-    reviewed_ids_set = set(st.session_state.get("reviewed_card_ids", []))
+    total_quota = len(st.session_state.get(_SK_QUOTA_CARD_IDS, []))
+    quota_ids_set = set(st.session_state.get(_SK_QUOTA_CARD_IDS, []))
+    reviewed_ids_set = set(st.session_state.get(_SK_REVIEWED_CARD_IDS, []))
     reviewed_count = len(quota_ids_set & reviewed_ids_set)
     remaining = len(due_cards)
     progress = reviewed_count / total_quota if total_quota > 0 else 0
@@ -203,13 +213,13 @@ def _render_study_card(
         text=f"本日の進捗: {reviewed_count} / {total_quota} 枚完了（残り {remaining} 枚）",
     )
 
-    if "current_card_index" not in st.session_state:
-        st.session_state.current_card_index = 0
+    if _SK_CURRENT_CARD_INDEX not in st.session_state:
+        st.session_state[_SK_CURRENT_CARD_INDEX] = 0
 
-    if st.session_state.current_card_index >= len(due_cards):
-        st.session_state.current_card_index = 0
+    if st.session_state[_SK_CURRENT_CARD_INDEX] >= len(due_cards):
+        st.session_state[_SK_CURRENT_CARD_INDEX] = 0
 
-    current_card = due_cards[st.session_state.current_card_index]
+    current_card = due_cards[st.session_state[_SK_CURRENT_CARD_INDEX]]
 
     # カード表示
     is_fav = current_card.get("is_favorite", False)
@@ -225,7 +235,7 @@ def _render_study_card(
             question_html = apply_highlight(question_html, hl_keys)
         show_eval_buttons = True
     else:
-        show_eval_buttons = st.session_state.get("show_answer", False)
+        show_eval_buttons = st.session_state.get(_SK_SHOW_ANSWER, False)
 
     category = current_card.get("category", "その他")
     title_html = (
@@ -254,7 +264,7 @@ def _render_study_card(
     # ボタン
     if not show_eval_buttons:
         if st.button("答えを見る", type="primary", use_container_width=True):
-            st.session_state.show_answer = True
+            st.session_state[_SK_SHOW_ANSWER] = True
             st.rerun()
     else:
         st.markdown(
@@ -264,37 +274,41 @@ def _render_study_card(
 
         col1, col2, col3, col4 = st.columns(4)
 
-        def process_review(quality: int) -> None:
-            card_id = current_card["id"]
-            if "reviewed_card_ids" not in st.session_state:
-                st.session_state.reviewed_card_ids = []
-            if card_id not in st.session_state.reviewed_card_ids:
-                st.session_state.reviewed_card_ids.append(card_id)
-                st.session_state.reviewed_card_count = (
-                    st.session_state.get("reviewed_card_count", 0) + 1
-                )
-
-            source_id = current_card.get("source_id")
-            if source_id:
-                if "reviewed_source_ids" not in st.session_state:
-                    st.session_state.reviewed_source_ids = []
-                if source_id not in st.session_state.reviewed_source_ids:
-                    st.session_state.reviewed_source_ids.append(source_id)
-
-            new_stats = calculate_next_review(quality, current_card)
-            update_card_progress(user_id, current_card["id"], new_stats)
-            st.session_state.show_answer = False
-            st.rerun()
-
         with col1:
             if st.button("忘れた (0)", use_container_width=True):
-                process_review(0)
+                _process_review(user_id, current_card, quality=0)
         with col2:
             if st.button("難しい (3)", use_container_width=True):
-                process_review(3)
+                _process_review(user_id, current_card, quality=3)
         with col3:
             if st.button("普通 (4)", use_container_width=True):
-                process_review(4)
+                _process_review(user_id, current_card, quality=4)
         with col4:
             if st.button("簡単 (5)", type="primary", use_container_width=True):
-                process_review(5)
+                _process_review(user_id, current_card, quality=5)
+
+
+def _process_review(
+    user_id: str, card: dict[str, Any], *, quality: int
+) -> None:
+    """レビュー結果を処理しセッション状態を更新"""
+    card_id: str = card["id"]
+    if _SK_REVIEWED_CARD_IDS not in st.session_state:
+        st.session_state[_SK_REVIEWED_CARD_IDS] = []
+    if card_id not in st.session_state[_SK_REVIEWED_CARD_IDS]:
+        st.session_state[_SK_REVIEWED_CARD_IDS].append(card_id)
+        st.session_state[_SK_REVIEWED_CARD_COUNT] = (
+            st.session_state.get(_SK_REVIEWED_CARD_COUNT, 0) + 1
+        )
+
+    source_id = card.get("source_id")
+    if source_id:
+        if _SK_REVIEWED_SOURCE_IDS not in st.session_state:
+            st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
+        if source_id not in st.session_state[_SK_REVIEWED_SOURCE_IDS]:
+            st.session_state[_SK_REVIEWED_SOURCE_IDS].append(source_id)
+
+    new_stats = calculate_next_review(quality, card)
+    update_card_progress(user_id, card["id"], new_stats)
+    st.session_state[_SK_SHOW_ANSWER] = False
+    st.rerun()

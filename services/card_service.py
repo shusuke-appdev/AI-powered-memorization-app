@@ -11,9 +11,15 @@ import random
 import re
 from typing import Any
 
-from config import BLANKS_PER_CARD
-from services.ai_service import PUNCTUATION_SET
 
+
+
+from config import BLANKS_PER_CARD
+
+PUNCTUATION_SET: frozenset[str] = frozenset({
+    "。", "、", "，", "．", ",", ".", "！", "？", "!", "?",
+    "：", ":", "；", ";", "「", "」", "（", "）", "(", ")",
+})
 
 def merge_adjacent_selections(
     phrases: list[str], selected_indices: list[int]

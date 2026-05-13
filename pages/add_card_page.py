@@ -9,13 +9,23 @@ import re
 import streamlit as st
 
 from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANKS
-from services.ai_service import QuotaExceededError, split_into_phrases, suggest_blanks
 from services.card_service import (
     apply_highlight,
     generate_cards_from_selection,
     parse_blanks_from_text,
 )
 from storage import add_card, add_source_card
+
+# セッション状態キー
+_SK_CATEGORY = "add_card_category"
+_SK_TITLE = "add_card_title"
+_SK_TEXT = "add_card_text"
+_SK_TYPE = "add_card_type"
+_SK_RANK = "add_card_rank"
+_SK_HIGHLIGHT = "add_card_highlight"
+_SK_WIDGET_KEY = "widget_key_counter"
+_SK_GENERATED_CARDS = "generated_cards"
+_SK_PREV_MANUAL_TEXT = "prev_manual_text"
 
 
 def render_add_card_page(user_id: str, api_key: str) -> None:
@@ -30,8 +40,7 @@ def render_add_card_page(user_id: str, api_key: str) -> None:
     with cancel_col:
         st.markdown("")
         has_progress = (
-            "phrases" in st.session_state
-            or "generated_cards" in st.session_state
+            "generated_cards" in st.session_state
             or st.session_state.add_card_text
         )
         if has_progress:
@@ -51,21 +60,20 @@ def render_add_card_page(user_id: str, api_key: str) -> None:
         _render_no_blank_flow(user_id, card_title, selected_category, selected_type, selected_rank)
     else:
         _render_blank_flow(
-            user_id, api_key, card_title, selected_category, selected_type, selected_rank
+            user_id, card_title, selected_category, selected_type, selected_rank
         )
 
 
 def _init_session_state() -> None:
     """入力フィールドのセッションステート初期化"""
-    defaults = {
-        "add_card_category": "",
-        "add_card_title": "",
-        "add_card_text": "",
-        "add_card_type": "",
-        "add_card_rank": "B",
-        "add_card_highlight": "",
-        "widget_key_counter": 0,
-        "manual_mode": False,
+    defaults: dict[str, object] = {
+        _SK_CATEGORY: "",
+        _SK_TITLE: "",
+        _SK_TEXT: "",
+        _SK_TYPE: "",
+        _SK_RANK: "B",
+        _SK_HIGHLIGHT: "",
+        _SK_WIDGET_KEY: 0,
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -74,16 +82,16 @@ def _init_session_state() -> None:
 
 def _clear_all_state() -> None:
     """全ての関連セッション状態をクリア"""
-    for key in ["phrases", "selected_indices", "generated_cards", "prev_manual_text"]:
+    for key in [_SK_GENERATED_CARDS, _SK_PREV_MANUAL_TEXT]:
         if key in st.session_state:
             del st.session_state[key]
-    st.session_state.add_card_category = ""
-    st.session_state.add_card_title = ""
-    st.session_state.add_card_text = ""
-    st.session_state.add_card_type = ""
-    st.session_state.add_card_highlight = ""
-    st.session_state.add_card_rank = "B"
-    st.session_state.widget_key_counter += 1
+    st.session_state[_SK_CATEGORY] = ""
+    st.session_state[_SK_TITLE] = ""
+    st.session_state[_SK_TEXT] = ""
+    st.session_state[_SK_TYPE] = ""
+    st.session_state[_SK_HIGHLIGHT] = ""
+    st.session_state[_SK_RANK] = "B"
+    st.session_state[_SK_WIDGET_KEY] += 1
 
 
 def _sync_widget_to_state(widget_key: str, state_key: str) -> None:
@@ -239,7 +247,6 @@ def _render_no_blank_flow(
 
 def _render_blank_flow(
     user_id: str,
-    api_key: str,
     card_title: str,
     selected_category: str,
     selected_type: str,
@@ -248,15 +255,7 @@ def _render_blank_flow(
     """穴埋めありタイプ（規範/判例/未選択）のフロー"""
     st.subheader("① テキストを入力")
 
-    manual_mode = st.checkbox(
-        "✍️ 手動で穴埋め箇所を指定する（【】で囲む）",
-        value=st.session_state.manual_mode,
-        key="manual_mode_checkbox",
-    )
-    st.session_state.manual_mode = manual_mode
-
-    if manual_mode:
-        st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
+    st.info("💡 穴埋めにしたい箇所を【】で囲んでください。例: 民法【709条】は...")
 
     wkey = f"text_input_{st.session_state.widget_key_counter}"
     if wkey not in st.session_state:
@@ -264,7 +263,7 @@ def _render_blank_flow(
     source_text = st.text_area(
         "",
         height=200,
-        placeholder="例: 民法第709条は不法行為による損害賠償を規定している。\n\n手動モード時: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
+        placeholder="例: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
         key=wkey,
         label_visibility="collapsed",
         on_change=_sync_widget_to_state,
@@ -272,23 +271,15 @@ def _render_blank_flow(
     )
     st.session_state.add_card_text = source_text
 
-    # 手動モードでテキストが変更されたら生成済みカードをクリア
-    if manual_mode and "generated_cards" in st.session_state:
+    # テキストが変更されたら生成済みカードをクリア
+    if "generated_cards" in st.session_state:
         prev_text = st.session_state.get("prev_manual_text", "")
         if source_text != prev_text:
             del st.session_state.generated_cards
             st.info("テキストが変更されました。再度「カード生成」を押してください。")
-    if manual_mode:
-        st.session_state.prev_manual_text = source_text
+    st.session_state.prev_manual_text = source_text
 
-    if manual_mode:
-        _render_manual_generate(source_text)
-    else:
-        _render_ai_analyze(source_text, api_key)
-
-    # ステップ2: 穴埋め箇所を選択
-    if "phrases" in st.session_state and st.session_state.phrases:
-        _render_phrase_selection(api_key)
+    _render_manual_generate(source_text)
 
     # プレビュー＆保存
     if "generated_cards" in st.session_state:
@@ -298,7 +289,7 @@ def _render_blank_flow(
 
 
 def _render_manual_generate(source_text: str) -> None:
-    """手動モードのカード生成"""
+    """カード生成"""
     if st.button("✨ カード生成", type="primary", key="manual_generate_btn"):
         if not source_text:
             st.warning("テキストを入力してください。")
@@ -311,138 +302,6 @@ def _render_manual_generate(source_text: str) -> None:
                 st.success(f"{len(cards)} 枚のカードを生成しました！")
             else:
                 st.error("カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。")
-
-
-def _render_ai_analyze(source_text: str, api_key: str) -> None:
-    """AIモードのテキスト解析"""
-    if st.button("📝 テキストを解析", type="primary"):
-        if not source_text:
-            st.warning("テキストを入力してください。")
-        elif not api_key:
-            st.warning("APIキーを設定してください。")
-        else:
-            with st.spinner("AIがテキストを解析中..."):
-                try:
-                    phrases = split_into_phrases(source_text, api_key)
-                    if isinstance(phrases, dict) and phrases.get("error") == "API_QUOTA_EXCEEDED":
-                        st.error(f"⚠️ {phrases.get('message', 'APIの利用制限に達しました。')}")
-                    elif phrases:
-                        st.session_state.phrases = phrases
-                        st.session_state.selected_indices = []
-                        st.success(f"{len(phrases)}個の文節に分割しました。穴埋め箇所を選択してください。")
-                    else:
-                        st.error("テキストの解析に失敗しました。")
-                except QuotaExceededError as e:
-                    st.error(f"⚠️ {e}")
-
-
-def _render_phrase_selection(api_key: str) -> None:
-    """穴埋め箇所の選択UI"""
-    st.subheader("② 穴埋め箇所を選択")
-
-    def _toggle_phrase(pidx: int) -> None:
-        if pidx in st.session_state.selected_indices:
-            st.session_state.selected_indices.remove(pidx)
-        else:
-            st.session_state.selected_indices.append(pidx)
-
-    st.markdown("チェックを入れた箇所が穴埋め（______）になります。")
-
-    phrases = st.session_state.phrases
-    punctuation_pattern = r"^[。、，．,.！？!?：:；;\s①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]+$"
-
-    if "selected_indices" not in st.session_state:
-        st.session_state.selected_indices = []
-
-    # AI提案ボタン
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button("🤖 AIに提案させる"):
-            if api_key:
-                with st.spinner("AIが提案中..."):
-                    try:
-                        suggested = suggest_blanks(phrases, api_key)
-                        if isinstance(suggested, dict) and suggested.get("error") == "API_QUOTA_EXCEEDED":
-                            st.error(f"⚠️ {suggested.get('message', 'APIの利用制限に達しました。')}")
-                        else:
-                            st.session_state.selected_indices = suggested
-                    except QuotaExceededError as e:
-                        st.error(f"⚠️ {e}")
-            else:
-                st.warning("APIキーを設定してください。")
-
-    # HTMLプレビュー
-    phrase_buttons_html = []
-    for i, phrase in enumerate(phrases):
-        is_punctuation = re.match(punctuation_pattern, phrase)
-        is_selected = i in st.session_state.selected_indices
-        if is_punctuation:
-            phrase_buttons_html.append(f"<span class='phrase-toggle punct'>{phrase}</span>")
-        elif is_selected:
-            phrase_buttons_html.append(f"<span class='phrase-toggle selected' data-idx='{i}'>{phrase}</span>")
-        else:
-            phrase_buttons_html.append(f"<span class='phrase-toggle normal' data-idx='{i}'>{phrase}</span>")
-
-    st.markdown(f"<div class='phrase-grid'>{''.join(phrase_buttons_html)}</div>", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # Streamlit ボタンでトグル
-    selectable_phrases = [
-        (i, phrase)
-        for i, phrase in enumerate(phrases)
-        if not re.match(punctuation_pattern, phrase)
-    ]
-
-    if selectable_phrases:
-        rows = [selectable_phrases[i : i + 4] for i in range(0, len(selectable_phrases), 4)]
-        for row in rows:
-            cols = st.columns(len(row))
-            for col_idx, (phrase_idx, phrase_text) in enumerate(row):
-                with cols[col_idx]:
-                    is_selected = phrase_idx in st.session_state.selected_indices
-                    btn_label = f"✓ {phrase_text}" if is_selected else phrase_text
-                    btn_type = "primary" if is_selected else "secondary"
-                    st.button(btn_label, key=f"toggle_{phrase_idx}", type=btn_type, use_container_width=True, on_click=_toggle_phrase, args=(phrase_idx,))
-
-    # プレビュー
-    selected = st.session_state.selected_indices.copy()
-    if selected:
-        preview_parts = []
-        answer_groups = []
-        current_answer_group: list[str] = []
-
-        for i, phrase in enumerate(phrases):
-            if i in selected:
-                if not current_answer_group:
-                    preview_parts.append("______")
-                current_answer_group.append(phrase)
-            else:
-                if current_answer_group:
-                    answer_groups.append("".join(current_answer_group))
-                    current_answer_group = []
-                preview_parts.append(phrase)
-
-        if current_answer_group:
-            answer_groups.append("".join(current_answer_group))
-
-        st.markdown("**プレビュー:**")
-        st.info("".join(preview_parts))
-        st.markdown(f"**穴埋め箇所: {len(answer_groups)}個** (隣接ブロックは自動結合)")
-        for idx, ans in enumerate(answer_groups, 1):
-            st.markdown(f"  {idx}. {ans}")
-
-    # カード生成ボタン
-    if st.button("✨ カード生成", type="primary", key="generate_cards_btn"):
-        if not selected:
-            st.warning("穴埋め箇所を1つ以上選択してください。")
-        else:
-            cards = generate_cards_from_selection(phrases, selected)
-            if cards:
-                st.session_state.generated_cards = cards
-                st.success(f"{len(cards)} 枚のカードを生成しました！")
-            else:
-                st.error("カードの生成に失敗しました。")
 
 
 def _render_save_form(

@@ -91,33 +91,3 @@ def get_category_colors(category: str, *, is_dark_mode: bool = False) -> dict[st
     group = get_category_group(category)
     mode = "dark" if is_dark_mode else "light"
     return CATEGORY_COLORS.get(group, CATEGORY_COLORS["その他"])[mode]
-
-
-def get_all_category_css() -> str:
-    """全カテゴリのCSSクラスを生成"""
-    css_rules: list[str] = []
-
-    for group, colors in CATEGORY_COLORS.items():
-        subjects = CATEGORY_GROUPS.get(group, [group])
-        for subject in subjects:
-            css_rules.append(f"""
-    .category-{subject} {{
-        background-color: {colors["light"]["bg"]} !important;
-        color: {colors["light"]["text"]} !important;
-        border: 1px solid {colors["light"]["border"]} !important;
-    }}
-""")
-
-    css_rules.append("    /* ダークモード用カテゴリ色 */")
-    for group, colors in CATEGORY_COLORS.items():
-        subjects = CATEGORY_GROUPS.get(group, [group])
-        for subject in subjects:
-            css_rules.append(f"""
-    .dark-mode .category-{subject} {{
-        background-color: {colors["dark"]["bg"]} !important;
-        color: {colors["dark"]["text"]} !important;
-        border: 1px solid {colors["dark"]["border"]} !important;
-    }}
-""")
-
-    return "\n".join(css_rules)
