@@ -1,5 +1,5 @@
 streamlit
-google-generativeai
+google-genai
 python-dateutil
 typing_extensions
 streamlit-cookies-controller
