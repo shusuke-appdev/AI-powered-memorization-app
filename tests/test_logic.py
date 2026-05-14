@@ -6,7 +6,12 @@ import datetime
 import unittest
 
 from services.card_service import apply_highlight, generate_cards_from_selection
-from services.review_service import calculate_next_review, get_initial_card_state
+from services.review_service import (
+    calculate_next_review,
+    get_initial_card_state,
+    reconcile_daily_quota,
+    select_hybrid_quota,
+)
 
 
 class TestSM2(unittest.TestCase):
@@ -24,14 +29,89 @@ class TestSM2(unittest.TestCase):
         self.assertEqual(new_state["interval"], 1)
 
 
+class TestDailyQuotaSelection(unittest.TestCase):
+    def test_duplicate_quota_ids_are_repaired_and_topped_up(self) -> None:
+        cards = [_make_review_card(str(i)) for i in range(20)]
+
+        quota_ids = reconcile_daily_quota(
+            ["0"] * 20,
+            [],
+            cards,
+            daily_limit=20,
+            all_cards=cards,
+        )
+
+        self.assertEqual(len(quota_ids), 20)
+        self.assertEqual(len(set(quota_ids)), 20)
+        self.assertEqual(quota_ids[0], "0")
+
+    def test_reviewed_cards_survive_quota_session_reset(self) -> None:
+        cards = [_make_review_card(str(i)) for i in range(25)]
+
+        quota_ids = reconcile_daily_quota(
+            None,
+            ["0", "1", "2"],
+            cards[3:],
+            daily_limit=20,
+            all_cards=cards,
+        )
+
+        self.assertEqual(len(quota_ids), 20)
+        self.assertEqual(quota_ids[:3], ["0", "1", "2"])
+        self.assertEqual(len(set(quota_ids)), 20)
+
+    def test_quota_shrink_keeps_already_reviewed_cards(self) -> None:
+        cards = [_make_review_card(str(i)) for i in range(25)]
+
+        quota_ids = reconcile_daily_quota(
+            [str(i) for i in range(20)],
+            [str(i) for i in range(15)],
+            cards[15:],
+            daily_limit=10,
+            all_cards=cards,
+        )
+
+        self.assertEqual(quota_ids, [str(i) for i in range(15)])
+
+    def test_select_hybrid_quota_deduplicates_candidate_card_ids(self) -> None:
+        cards = [_make_review_card("0"), _make_review_card("0"), _make_review_card("1")]
+
+        selected = select_hybrid_quota(cards, 3, cards)
+
+        self.assertEqual([card["id"] for card in selected], ["0", "1"])
+
+
 class TestCardGeneration(unittest.TestCase):
     def test_single_blank_no_filler(self) -> None:
         """1箇所のみ選択 → フィラーなし、穴埋め1箇所のカード1枚"""
         phrases = [
-            "不法行為", "は", "、", "故意", "又は", "過失", "によって",
-            "他人", "の", "権利", "又は", "法律上保護される利益", "を",
-            "侵害した", "者", "は", "、", "これ", "によって", "生じた",
-            "損害", "を", "賠償する", "責任", "を", "負う", "。",
+            "不法行為",
+            "は",
+            "、",
+            "故意",
+            "又は",
+            "過失",
+            "によって",
+            "他人",
+            "の",
+            "権利",
+            "又は",
+            "法律上保護される利益",
+            "を",
+            "侵害した",
+            "者",
+            "は",
+            "、",
+            "これ",
+            "によって",
+            "生じた",
+            "損害",
+            "を",
+            "賠償する",
+            "責任",
+            "を",
+            "負う",
+            "。",
         ]
         selected = [3]  # "故意" のみ
         cards = generate_cards_from_selection(phrases, selected)
@@ -108,7 +188,7 @@ class TestHtmlSafety(unittest.TestCase):
         text = '<script>alert("x")</script>'
         self.assertEqual(
             apply_highlight(text, ""),
-            '&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;',
+            "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;",
         )
 
     def test_apply_highlight_escapes_html_with_keywords(self) -> None:
@@ -117,6 +197,19 @@ class TestHtmlSafety(unittest.TestCase):
         self.assertIn("&lt;/b&gt;", result)
         self.assertIn(">民法</span>", result)
         self.assertNotIn("<b>", result)
+
+
+def _make_review_card(card_id: str) -> dict[str, object]:
+    return {
+        "id": card_id,
+        "question": f"question {card_id}",
+        "answer": f"answer {card_id}",
+        "category": "民法",
+        "ease_factor": 2.5,
+        "next_review": datetime.date.today().isoformat(),
+        "blank_count": 1,
+        "rank": "B",
+    }
 
 
 if __name__ == "__main__":

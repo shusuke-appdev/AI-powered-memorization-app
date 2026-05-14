@@ -66,6 +66,60 @@ def get_initial_card_state() -> dict[str, Any]:
     }
 
 
+def reconcile_daily_quota(
+    current_quota_ids: list[str] | None,
+    reviewed_card_ids: list[str],
+    due_cards: list[dict[str, Any]],
+    daily_limit: int,
+    all_cards: list[dict[str, Any]],
+) -> list[str]:
+    """
+    今日のノルマIDを、重複・削除済みカード・ノルマ変更に耐える形へ補正する。
+
+    既にレビューしたカードは今日の進捗として残し、未達分だけ due カードから補充する。
+    """
+    available_card_ids = {_get_card_id(card) for card in all_cards}
+    available_card_ids.discard(None)
+
+    quota_ids = _normalize_card_ids(current_quota_ids, available_card_ids)
+    reviewed_ids = _normalize_card_ids(reviewed_card_ids, available_card_ids)
+
+    quota_seen = set(quota_ids)
+    for card_id in reviewed_ids:
+        if card_id not in quota_seen:
+            quota_ids.append(card_id)
+            quota_seen.add(card_id)
+
+    if len(quota_ids) > daily_limit:
+        reviewed_id_set = set(reviewed_ids)
+        reviewed_quota_ids = [
+            card_id for card_id in quota_ids if card_id in reviewed_id_set
+        ]
+        unreviewed_quota_ids = [
+            card_id for card_id in quota_ids if card_id not in reviewed_id_set
+        ]
+        unreviewed_limit = max(0, daily_limit - len(reviewed_quota_ids))
+        quota_ids = reviewed_quota_ids + unreviewed_quota_ids[:unreviewed_limit]
+        quota_seen = set(quota_ids)
+
+    remaining_slots = daily_limit - len(quota_ids)
+    if remaining_slots <= 0:
+        return quota_ids
+
+    candidates = _dedupe_cards_by_id(
+        [card for card in due_cards if _get_card_id(card) not in quota_seen]
+    )
+    additional_cards = select_hybrid_quota(candidates, remaining_slots, all_cards)
+
+    for card in additional_cards:
+        card_id = _get_card_id(card)
+        if card_id is not None and card_id not in quota_seen:
+            quota_ids.append(card_id)
+            quota_seen.add(card_id)
+
+    return quota_ids
+
+
 # ============ ハイブリッド最適化アルゴリズム ============
 
 
@@ -83,6 +137,8 @@ def select_hybrid_quota(
     """
     if not due_cards:
         return []
+
+    due_cards = _dedupe_cards_by_id(due_cards)
 
     # 1. 同一source_idのカードを優先的に選出（1日1枚）し、不足分は同一ソースの別カードで補充
     seen_source_ids: set[str] = set()
@@ -188,27 +244,27 @@ def _select_group_cards(
                 if id(c) not in seen:
                     ordered_cards.append(c)
                     seen.add(id(c))
-            
+
             if dead_idx < len(deadline_sorted):
                 c = deadline_sorted[dead_idx]
                 dead_idx += 1
                 if id(c) not in seen:
                     ordered_cards.append(c)
                     seen.add(id(c))
-                    
+
         sorted_by_cat[cat] = ordered_cards
 
     # 3. カテゴリ間で均等にラウンドロビンで抽出する
     selected_cards: list[dict[str, Any]] = []
     category_keys = list(sorted_by_cat.keys())
-    
+
     while len(selected_cards) < count and category_keys:
         for cat in list(category_keys):
             if not sorted_by_cat[cat]:
                 # この科目のカードが尽きた場合は候補から外す
                 category_keys.remove(cat)
                 continue
-            
+
             selected_cards.append(sorted_by_cat[cat].pop(0))
             if len(selected_cards) == count:
                 break
@@ -262,25 +318,19 @@ def _adjust_to_target_blanks(
                     ):
                         continue
 
-                    if low_card.get("blank_count", 1) < high_card.get(
-                        "blank_count", 1
-                    ):
+                    if low_card.get("blank_count", 1) < high_card.get("blank_count", 1):
                         selected = [c for c in selected if c is not high_card] + [
                             low_card
                         ]
                         not_selected = [
                             c for c in not_selected if c is not low_card
                         ] + [high_card]
-                        current_blanks = sum(
-                            c.get("blank_count", 1) for c in selected
-                        )
+                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
         else:
-            low_blank_cards = sorted(
-                selected, key=lambda c: c.get("blank_count", 1)
-            )
+            low_blank_cards = sorted(selected, key=lambda c: c.get("blank_count", 1))
             high_blank_candidates = sorted(
                 not_selected, key=lambda c: c.get("blank_count", 1), reverse=True
             )
@@ -295,20 +345,58 @@ def _adjust_to_target_blanks(
                     ):
                         continue
 
-                    if high_card.get("blank_count", 1) > low_card.get(
-                        "blank_count", 1
-                    ):
+                    if high_card.get("blank_count", 1) > low_card.get("blank_count", 1):
                         selected = [c for c in selected if c is not low_card] + [
                             high_card
                         ]
                         not_selected = [
                             c for c in not_selected if c is not high_card
                         ] + [low_card]
-                        current_blanks = sum(
-                            c.get("blank_count", 1) for c in selected
-                        )
+                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
 
     return selected[:limit]
+
+
+def _normalize_card_ids(
+    card_ids: list[str] | None,
+    available_card_ids: set[str | None],
+) -> list[str]:
+    """カードIDリストを順序維持で重複除去し、存在するカードだけに絞る。"""
+    if not card_ids:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_card_id in card_ids:
+        card_id = str(raw_card_id)
+        if card_id in seen or card_id not in available_card_ids:
+            continue
+        normalized.append(card_id)
+        seen.add(card_id)
+
+    return normalized
+
+
+def _dedupe_cards_by_id(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同じカードIDが複数回入っても、選定結果に重複を持ち込まない。"""
+    unique_cards: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for card in cards:
+        card_id = _get_card_id(card)
+        if card_id is None or card_id in seen:
+            continue
+        unique_cards.append(card)
+        seen.add(card_id)
+
+    return unique_cards
+
+
+def _get_card_id(card: dict[str, Any]) -> str | None:
+    card_id = card.get("id")
+    if card_id is None:
+        return None
+    return str(card_id)
