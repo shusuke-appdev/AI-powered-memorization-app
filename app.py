@@ -10,7 +10,7 @@ from __future__ import annotations
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-from auth import get_api_key, get_username, validate_session_token
+from auth import get_username, validate_session_token
 from database import DatabaseConnectionError
 from pages.add_card_page import render_add_card_page
 from pages.listen_page import render_listen_page
@@ -60,10 +60,9 @@ def show_main_app() -> None:
     """メインアプリケーションを表示"""
     user_id: str = st.session_state.user_id
     username: str = st.session_state.get("username", "ユーザー")
-    api_key: str = get_api_key(user_id)
 
     # サイドバー
-    render_sidebar(user_id, username, api_key)
+    render_sidebar(user_id, username)
 
     # タイトル
     st.title("🧠 AI 暗記カード")
@@ -74,7 +73,7 @@ def show_main_app() -> None:
     )
 
     with tab1:
-        render_review_page(user_id, api_key)
+        render_review_page(user_id)
 
     with tab2:
         render_add_card_page(user_id)

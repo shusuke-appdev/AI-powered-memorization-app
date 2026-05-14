@@ -5,50 +5,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import bcrypt
 import streamlit as st
 
 from database import get_supabase
 
 SESSION_EXPIRY_DAYS: int = 30
 DEFAULT_DAILY_QUOTA: int = 15
-
-
-# ============ パスワード管理 ============
-
-
-def hash_password_bcrypt(password: str) -> str:
-    """パスワードをbcryptでハッシュ化（推奨）"""
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password_bcrypt(password: str, hashed: str) -> bool:
-    """bcryptでパスワードを検証"""
-    try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
-    except Exception:
-        return False
-
-
-def _hash_password_sha256(password: str) -> str:
-    """パスワードをSHA-256でハッシュ化（レガシー・マイグレーション用）"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-
-def _is_bcrypt_hash(hash_str: str) -> bool:
-    """bcryptハッシュかどうかを判定"""
-    return hash_str.startswith("$2b$") or hash_str.startswith("$2a$")
-
-
-# 後方互換性のため
-def hash_password(password: str) -> str:
-    """パスワードをハッシュ化（新規はbcrypt）"""
-    return hash_password_bcrypt(password)
 
 
 def _generate_session_token() -> str:
@@ -60,10 +26,10 @@ def _generate_session_token() -> str:
 
 
 def register_user(
-    username: str, api_key: str = ""
+    username: str,
 ) -> tuple[bool, str, str | None]:
     """
-    新規ユーザーを登録（パスワードなし）
+    新規ユーザーを登録
 
     Returns:
         tuple: (success, message, user_id)
@@ -83,15 +49,13 @@ def register_user(
     if existing.data:
         return False, "このユーザー名は既に使用されています", None
 
-    # 新規ユーザー作成（パスワードはダミーを保存）
-    dummy_hash = hash_password_bcrypt("dummy_password_for_no_auth")
     result = (
         supabase.table("users")
         .insert(
             {
                 "username": username,
-                "password_hash": dummy_hash,
-                "api_key": api_key,
+                # 既存DBスキーマ互換用。アプリではパスワードを使わない。
+                "password_hash": f"password_disabled_{uuid.uuid4().hex}",
             }
         )
         .execute()
@@ -102,54 +66,6 @@ def register_user(
         return True, "ユーザー登録が完了しました", user_id
 
     return False, "登録に失敗しました", None
-
-
-def authenticate_user(
-    username: str, password: str
-) -> tuple[bool, str, str | None]:
-    """
-    ユーザー認証（bcryptとSHA-256の両方に対応・自動マイグレーション）
-
-    Returns:
-        tuple: (success, message, user_id)
-    """
-    if not username or not password:
-        return False, "ユーザー名とパスワードを入力してください", None
-
-    supabase = get_supabase()
-
-    result = (
-        supabase.table("users")
-        .select("id, password_hash")
-        .ilike("username", username)
-        .execute()
-    )
-
-    if not result.data:
-        return False, "ユーザーが見つかりません", None
-
-    user: dict[str, Any] = result.data[0]
-    stored_hash: str = user["password_hash"]
-    user_id: str = user["id"]
-
-    # bcryptハッシュかSHA-256ハッシュかを判定
-    if _is_bcrypt_hash(stored_hash):
-        # bcryptで検証
-        if verify_password_bcrypt(password, stored_hash):
-            return True, "ログイン成功", user_id
-        return False, "パスワードが正しくありません", None
-
-    # SHA-256（レガシー）で検証
-    sha256_hash = _hash_password_sha256(password)
-    if stored_hash == sha256_hash:
-        # 認証成功 → bcryptにマイグレーション
-        new_hash = hash_password_bcrypt(password)
-        supabase.table("users").update({"password_hash": new_hash}).eq(
-            "id", user_id
-        ).execute()
-        return True, "ログイン成功", user_id
-
-    return False, "パスワードが正しくありません", None
 
 
 # ============ ユーザー情報取得 ============
@@ -186,32 +102,6 @@ def get_username(user_id: str) -> str | None:
         st.session_state[cache_key] = username
         return username
     return None
-
-
-def get_api_key(user_id: str) -> str:
-    """ユーザーIDからAPIキーを取得（セッションキャッシュ付き）"""
-    cache_key = f"api_key_{user_id}"
-    if cache_key in st.session_state:
-        return st.session_state[cache_key]
-
-    supabase = get_supabase()
-    result = supabase.table("users").select("api_key").eq("id", user_id).execute()
-    if result.data:
-        api_key: str = result.data[0].get("api_key", "")
-        st.session_state[cache_key] = api_key
-        return api_key
-    return ""
-
-
-def update_api_key(user_id: str, api_key: str) -> bool:
-    """ユーザーのAPIキーを更新"""
-    supabase = get_supabase()
-    result = (
-        supabase.table("users").update({"api_key": api_key}).eq("id", user_id).execute()
-    )
-    # キャッシュを更新
-    st.session_state[f"api_key_{user_id}"] = api_key
-    return bool(result.data)
 
 
 # ============ ノルマ設定 ============

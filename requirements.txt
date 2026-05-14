@@ -1,10 +1,8 @@
 streamlit
-google-genai
 python-dateutil
 typing_extensions
 streamlit-cookies-controller
 supabase
-bcrypt
 plotly
 ruff
 pytest

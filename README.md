@@ -1,142 +1,140 @@
 # AI 暗記カード
 
-AIを活用した穴埋め式フラッシュカードアプリ。Gemini APIでカードを自動生成し、SM-2アルゴリズムで効率的な復習スケジュールを管理します。
+法律学習向けの穴埋め式フラッシュカードアプリです。Streamlit で画面を構成し、Supabase PostgreSQL にユーザー、原文カード、暗記カード、セッションを保存します。カード生成は、ユーザーが `【】` で穴埋め箇所を指定する手動フローです。Gemini API とアプリ内AI機能は使用しません。
 
-## 機能
+## 主な機能
 
-### 基本機能
-- **AI穴埋め生成** - テキストを貼り付けるだけでAIが自動で穴埋め問題を生成
-- **SM-2復習システム** - 科学的な復習スケジュールで効率的に暗記
-- **本日のノルマ機能** - 1日の復習上限を設定（デフォルト15枚）
-- **ハイブリッド最適化** - 苦手カードと期限カードをバランスよく出題
-- **原文カード保存** - 穴埋めカードの元テキストを別途保存・レビュー可能
-- **マルチユーザー対応** - ユーザー登録・ログイン、自動ログイン（30日間）
-- **クラウド保存** - Supabase（PostgreSQL）によるデータ永続化
+- ログイン画面で登録済みユーザーを選択するログイン
+- `【】` マーカーによる穴埋めカード生成
+- 規範、判例、類型、知識のカードタイプ管理
+- 民法、商法、刑法、憲法、行政法、民事訴訟法、刑事訴訟法、その他のカテゴリ管理
+- A+ から C までの重要度ランク
+- SM-2 ベースの復習間隔計算
+- 日次ノルマ、科目ラウンドロビン、重要度、苦手度、期限を考慮した出題選択
+- 原文カードと暗記カードの紐づけ管理
+- 原文単位のお気に入り
+- カード編集、削除、原文からの再生成
+- 統計表示とJSON/CSVエクスポート/インポート
+- Web Speech API を使った原文聞き流し
+- ダークモードとモバイル向けCSS
 
-### 新機能（v2.0）
-- **📊 統計ダッシュボード** - 学習進捗の可視化（習得率、カテゴリ別統計）
-- **📦 エクスポート/インポート** - JSON/CSV形式でデータバックアップ・移行
-- **⭐ お気に入り機能** - 原文テキスト（Source Card）単位でお気に入りを管理
-- **🎧 聞き流しモード** - 原文の連続再生・自動読み上げ機能（プレイリスト生成）
-- **🌙 ダークモード** - 目に優しいダークテーマ
-- **📱 モバイル対応強化** - スマホでも快適に操作
+## 技術スタック
 
----
+- Python 3.10 以上を想定
+- Streamlit
+- Supabase Python client
+- PostgreSQL on Supabase
+- Plotly / pandas
+- pytest / ruff
 
-## ローカル開発
+## セットアップ
 
-### 必要条件
-- Python 3.9+
-- Gemini API キー
-- Supabase プロジェクト
-
-### セットアップ
-
-```bash
-# 依存関係をインストール
+```powershell
 pip install -r requirements.txt
 
-# 環境変数を設定（PowerShell）
 $env:SUPABASE_URL = "https://xxx.supabase.co"
 $env:SUPABASE_KEY = "eyJ..."
 
-# アプリを起動
 streamlit run app.py
 ```
 
----
-
-## Streamlit Cloud へのデプロイ
-
-1. GitHubにプッシュ
-2. [share.streamlit.io](https://share.streamlit.io) でリポジトリを選択
-3. **Settings** → **Secrets** に以下を追加:
+Streamlit Cloud では `Settings` から次のSecretsを設定します。
 
 ```toml
 SUPABASE_URL = "https://xxx.supabase.co"
 SUPABASE_KEY = "eyJ..."
 ```
 
----
+## 主要ファイル
 
-## ファイル構成
-
-```
-memorization_app/
-├── app.py              # メインアプリケーション
-├── auth.py             # ユーザー認証・セッション管理（bcrypt対応）
-├── storage.py          # カード・原文カードデータ管理
-├── database.py         # Supabase接続（リトライ機能付き）
-├── gemini_client.py    # Gemini API連携
-├── utils.py            # SM-2アルゴリズム・ハイブリッド最適化
-├── stats.py            # 学習統計計算・表示
-├── components.py       # UIコンポーネント（オーディオプレイヤー等）
-├── export_import.py    # エクスポート/インポート機能
-├── requirements.txt    # 依存関係
-├── requirements.txt    # 依存関係
-├── HELP_AI_CONTEXT.md  # ヘルプAI用コンテキスト（統合リファレンス）
-└── .gitignore
+```text
+app.py                     Streamlitアプリの入口、認証判定、タブ構成
+auth.py                    ユーザー、ノルマ、セッション管理
+database.py                Supabase接続と接続エラー処理
+storage.py                 cards / source_cards のCRUD
+components.py              聞き流し用HTML/JavaScriptコンポーネント
+config.py                  カテゴリ、カードタイプ、ランク、アルゴリズム定数
+export_import.py           JSON/CSVの変換ロジック
+stats.py                   学習統計の計算
+pages/                     Streamlit画面
+services/review_service.py SM-2と日次出題選択
+services/card_service.py   穴埋めカード生成とハイライト
+styles/                    CSS
+tests/                     ロジックテスト
+migration_*.sql            既存DBへの差分SQL
 ```
 
----
+## データモデル概要
 
-## データベース構造（Supabase）
+### users
 
-### users テーブル
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| id | UUID | ユーザーID |
-| username | TEXT | ユーザー名 |
-| password_hash | TEXT | パスワード（bcryptハッシュ） |
-| api_key | TEXT | Gemini APIキー |
-| daily_quota_limit | INT | 1日のノルマ上限 |
-| created_at | TIMESTAMP | 登録日時 |
+| カラム | 用途 |
+| --- | --- |
+| id | ユーザーID |
+| username | 表示名、ログイン選択名 |
+| password_hash | 既存DBスキーマ互換用。アプリでは使用しない |
+| api_key | 既存DBスキーマ互換用。アプリでは使用しない |
+| daily_quota | 1日の復習上限 |
+| created_at | 作成日時 |
 
-### cards テーブル
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| id | UUID | カードID |
-| user_id | UUID | 所有者のユーザーID |
-| question | TEXT | 問題文（穴埋め） |
-| answer | TEXT | 答え |
-| title | TEXT | カードのタイトル |
-| category | TEXT | カテゴリ |
-| ease_factor | FLOAT | 難易度係数 |
-| interval | INT | 復習間隔（日） |
-| repetitions | INT | 連続正解回数 |
-| next_review | DATE | 次回復習日 |
-| source_id | UUID | 原文カードへの参照 |
-| blank_count | INT | 穴埋め箇所数 |
-| **is_favorite** | BOOL | お気に入りフラグ（新規） |
+### sessions
 
-### source_cards テーブル
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| id | UUID | 原文カードID |
-| user_id | UUID | 所有者のユーザーID |
-| source_text | TEXT | 原文テキスト |
-| title | TEXT | タイトル |
-| category | TEXT | カテゴリ |
-| created_at | TIMESTAMP | 作成日時 |
+| カラム | 用途 |
+| --- | --- |
+| token | Cookieに保存するセッショントークン |
+| user_id | ユーザーID |
+| expires_at | 有効期限 |
 
-### sessions テーブル
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| token | UUID | セッショントークン |
-| user_id | UUID | ユーザーID |
-| expires_at | TIMESTAMP | 有効期限 |
+### source_cards
 
----
+| カラム | 用途 |
+| --- | --- |
+| id | 原文カードID |
+| user_id | 所有者 |
+| source_text | 元テキスト |
+| title | タイトル |
+| category | 科目 |
+| card_type | 規範、判例、類型、知識 |
+| created_at | 作成日時 |
 
-## ライセンス
+### cards
 
-MIT License
+| カラム | 用途 |
+| --- | --- |
+| id | 暗記カードID |
+| user_id | 所有者 |
+| source_id | 原文カードID |
+| question | 問題文 |
+| answer | 答え |
+| title | タイトル |
+| category | 科目 |
+| card_type | 規範、判例、類型、知識 |
+| rank | 重要度 |
+| highlighted_keywords | 知識、類型カードのハイライト語 |
+| ease_factor | SM-2難易度係数 |
+| interval | 復習間隔 |
+| repetitions | 連続正解回数 |
+| next_review | 次回復習日 |
+| blank_count | 穴埋め量の目安 |
+| is_favorite | お気に入り |
 
----
+## 検証
 
-## 謝辞
+通常は次を使います。
 
-- [Streamlit](https://streamlit.io/) - Webアプリフレームワーク
-- [Google Gemini](https://ai.google.dev/) - AI生成
-- [Supabase](https://supabase.com/) - データベース
-- SM-2 Algorithm - 復習スケジュール
+```powershell
+ruff check .
+pytest tests
+```
+
+環境構築と既知の検証課題は `DEVELOPMENT.md` と `CODE_AUDIT.md` を参照してください。
+
+## 関連資料
+
+- `USER_GUIDE.md`: 利用者向け操作ガイド
+- `ARCHITECTURE.md`: 構造、責務、データフロー
+- `DEVELOPMENT.md`: 開発、設定、検証、運用メモ
+- `CODE_AUDIT.md`: 総点検結果
+- `IMPROVEMENT_PLAN.md`: 根本改修計画
+- `OPERATOR_ACTIONS.md`: 運用者が実施する設定・確認作業
+- `task.md`: 実行タスク一覧

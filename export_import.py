@@ -90,7 +90,7 @@ def import_cards_json(
     Args:
         json_data: JSON文字列
         existing_cards: 既存のカードリスト（重複チェック用）
-        duplicate_action: 重複時の動作 ("skip" or "overwrite")
+        duplicate_action: 重複時の動作 ("skip" or "create_duplicate")
 
     Returns:
         dict: {cards, source_cards, skipped, error}
@@ -143,7 +143,7 @@ def import_cards_csv(
     Args:
         csv_data: CSV文字列
         existing_cards: 既存のカードリスト（重複チェック用）
-        duplicate_action: 重複時の動作 ("skip" or "overwrite")
+        duplicate_action: 重複時の動作 ("skip" or "create_duplicate")
         reset_progress: 学習進捗をリセットするか
 
     Returns:

@@ -96,7 +96,7 @@ def _raise_connection_error(last_error: Exception | None) -> Any:
         )
     elif "unauthorized" in error_msg or "401" in error_msg:
         raise DatabaseConnectionError(
-            "データベースの認証に失敗しました。APIキーを確認してください。"
+            "データベースの認証に失敗しました。Supabase接続キーを確認してください。"
         )
     else:
         raise DatabaseConnectionError(f"データベースエラー: {last_error}")

@@ -14,7 +14,7 @@ def render_audio_player(playlist):
         return
 
     # JSON化してJavaScriptに渡す
-    playlist_json = json.dumps(playlist, ensure_ascii=False)
+    playlist_json = json.dumps(playlist, ensure_ascii=False).replace("</", "<\\/")
 
     components.html(
         f"""

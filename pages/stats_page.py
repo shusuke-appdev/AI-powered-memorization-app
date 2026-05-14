@@ -177,8 +177,8 @@ def _render_export_import_ui(
         with col1:
             duplicate_action = st.radio(
                 "重複時の処理",
-                ["skip", "overwrite"],
-                format_func=lambda x: "スキップ" if x == "skip" else "上書き",
+                ["skip", "create_duplicate"],
+                format_func=lambda x: "スキップ" if x == "skip" else "重複として追加",
                 horizontal=True,
                 key="import_duplicate_action",
             )

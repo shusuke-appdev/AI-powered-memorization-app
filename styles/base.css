@@ -417,31 +417,3 @@ html, body, [class*="css"] {
     border: none !important;
     background: transparent !important;
 }
-
-/* ============ Help AI Chat ============ */
-
-.help-ai-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #10b981 !important;
-    margin-bottom: 8px;
-}
-
-.chat-message {
-    padding: 8px 12px;
-    border-radius: 8px;
-    margin-bottom: 6px;
-    font-size: 13px;
-    line-height: 1.4;
-}
-.chat-message.user {
-    background: #e5e7eb;
-    margin-left: 15px;
-    border-left: 3px solid #6b7280;
-}
-.chat-message.assistant {
-    background: #d1fae5;
-    margin-right: 15px;
-    border-left: 3px solid #10b981;
-    color: #065f46 !important;
-}

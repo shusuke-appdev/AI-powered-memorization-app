@@ -61,11 +61,6 @@ MIN_EASE_FACTOR: float = 1.3
 MASTERY_THRESHOLD: int = 5  # 習得判定の連続正解回数
 
 
-# ============ Gemini API 定数 ============
-
-GEMINI_MODEL: str = "gemini-2.5-flash"
-
-
 # ============ ヘルパー関数 ============
 
 

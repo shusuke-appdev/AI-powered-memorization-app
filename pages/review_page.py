@@ -11,6 +11,7 @@ import streamlit as st
 
 from auth import get_daily_quota_limit
 from services.card_service import apply_highlight
+from services.html_rendering import escape_html, safe_category_class
 from services.review_service import calculate_next_review, select_hybrid_quota
 from storage import (
     get_source_cards_by_ids,
@@ -30,7 +31,7 @@ _SK_SHOW_ANSWER = "show_answer"
 _SK_SOURCE_REVIEW_INDEX = "source_review_index"
 
 
-def render_review_page(user_id: str, api_key: str) -> None:
+def render_review_page(user_id: str) -> None:
     """本日のノルマタブを表示"""
     st.title("本日のノルマ")
 
@@ -151,18 +152,21 @@ def _render_source_review(
         text=f"原文 {st.session_state[_SK_SOURCE_REVIEW_INDEX] + 1} / {len(source_cards)}",
     )
 
-    category = current_source.get("category", "その他")
+    category_value = current_source.get("category", "その他")
+    category = safe_category_class(category_value)
+    category_label = escape_html(category_value)
     title_html = (
-        f'<div class="flashcard-title">{current_source.get("title", "")}</div>'
+        f'<div class="flashcard-title">{escape_html(current_source.get("title", ""))}</div>'
         if current_source.get("title")
         else ""
     )
+    source_text = escape_html(current_source.get("source_text", ""))
     st.markdown(
         f"""
 <div class="flashcard flashcard-bg-{category}">
     {title_html}
-    <div class="flashcard-category category-{category}">{category}</div>
-    <div class="flashcard-question" style="font-size: 18px; text-align: left;">{current_source.get("source_text", "")}</div>
+    <div class="flashcard-category category-{category}">{category_label}</div>
+    <div class="flashcard-question" style="font-size: 18px; text-align: left;">{source_text}</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -233,24 +237,25 @@ def _render_study_card(
 
     card_type = current_card.get("card_type")
     is_highlight_mode = card_type in ("知識", "類型")
-    question_html = current_card["question"]
+    question_html = escape_html(current_card["question"])
 
     if is_highlight_mode:
         hl_keys = current_card.get("highlighted_keywords", "")
-        if hl_keys:
-            question_html = apply_highlight(question_html, hl_keys)
+        question_html = apply_highlight(current_card["question"], hl_keys)
         show_eval_buttons = True
     else:
         show_eval_buttons = st.session_state.get(_SK_SHOW_ANSWER, False)
 
-    category = current_card.get("category", "その他")
+    category_value = current_card.get("category", "その他")
+    category = safe_category_class(category_value)
+    category_label = escape_html(category_value)
     title_html = (
-        f'<div class="flashcard-title">{current_card.get("title", "")}</div>'
+        f'<div class="flashcard-title">{escape_html(current_card.get("title", ""))}</div>'
         if current_card.get("title")
         else ""
     )
     answer_html = (
-        f'<div class="flashcard-answer">{current_card["answer"]}</div>'
+        f'<div class="flashcard-answer">{escape_html(current_card["answer"])}</div>'
         if show_eval_buttons and not is_highlight_mode
         else ""
     )
@@ -259,7 +264,7 @@ def _render_study_card(
 <div class="flashcard flashcard-bg-{category}">
     {title_html}
     <div class="flashcard-category category-{category}">
-        {fav_star} {category}
+        {fav_star} {category_label}
     </div>
     <div class="flashcard-question">{question_html}</div>
     {answer_html}

@@ -5,7 +5,7 @@
 import datetime
 import unittest
 
-from services.card_service import generate_cards_from_selection
+from services.card_service import apply_highlight, generate_cards_from_selection
 from services.review_service import calculate_next_review, get_initial_card_state
 
 
@@ -101,6 +101,22 @@ class TestCardGeneration(unittest.TestCase):
         selected: list[int] = []
         cards = generate_cards_from_selection(phrases, selected)
         self.assertEqual(len(cards), 0)
+
+
+class TestHtmlSafety(unittest.TestCase):
+    def test_apply_highlight_escapes_html_without_keywords(self) -> None:
+        text = '<script>alert("x")</script>'
+        self.assertEqual(
+            apply_highlight(text, ""),
+            '&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;',
+        )
+
+    def test_apply_highlight_escapes_html_with_keywords(self) -> None:
+        result = apply_highlight("<b>民法</b>", "民法")
+        self.assertIn("&lt;b&gt;", result)
+        self.assertIn("&lt;/b&gt;", result)
+        self.assertIn(">民法</span>", result)
+        self.assertNotIn("<b>", result)
 
 
 if __name__ == "__main__":

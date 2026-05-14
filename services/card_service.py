@@ -1,7 +1,5 @@
 """
 カード生成サービス — 穴埋めカードの生成ロジック
-
-元の gemini_client.py からカード生成ロジックを分離。
 """
 
 from __future__ import annotations
@@ -9,9 +7,9 @@ from __future__ import annotations
 import math
 import random
 import re
-from typing import Any
 
 from config import BLANKS_PER_CARD
+from services.html_rendering import escape_html
 
 PUNCTUATION_SET: frozenset[str] = frozenset({
     "。", "、", "，", "．", ",", ".", "！", "？", "!", "?",
@@ -187,9 +185,7 @@ def validate_blank_markers(text: str) -> tuple[bool, str, int]:
     return True, f"{len(matches)}箇所の穴埋めが指定されています。", len(matches)
 
 
-def generate_flashcards(
-    text: str, api_key: str | None = None, keywords: Any = None
-) -> list[dict[str, str]] | None:
+def generate_flashcards(text: str) -> list[dict[str, str]] | None:
     """旧API互換のエントリーポイント"""
     is_valid, _message, _count = validate_blank_markers(text)
     if not is_valid:
@@ -200,7 +196,7 @@ def generate_flashcards(
 def apply_highlight(text: str, keywords_input: str) -> str:
     """カードの「知識」「類型」カテゴリ向けハイライト置換処理（複数キーワード・多重置換対応）"""
     if not text or not keywords_input:
-        return text
+        return escape_html(text)
 
     # 全角・半角スペース、読点、カンマ、中点で分割
     keywords = [
@@ -208,7 +204,7 @@ def apply_highlight(text: str, keywords_input: str) -> str:
     ]
 
     if not keywords:
-        return text
+        return escape_html(text)
 
     # 文字列長の降順でソート
     keywords = sorted(list(set(keywords)), key=len, reverse=True)
@@ -216,5 +212,15 @@ def apply_highlight(text: str, keywords_input: str) -> str:
     escaped_keywords = [re.escape(kw) for kw in keywords]
     pattern = r"(" + "|".join(escaped_keywords) + r")"
 
-    highlight_span = r'<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">\1</span>'
-    return re.sub(pattern, highlight_span, text)
+    highlighted_parts: list[str] = []
+    last_end = 0
+    for match in re.finditer(pattern, text):
+        highlighted_parts.append(escape_html(text[last_end : match.start()]))
+        highlighted_parts.append(
+            '<span style="color: #dc2626; text-decoration: underline; '
+            f'font-weight: bold;">{escape_html(match.group(0))}</span>'
+        )
+        last_end = match.end()
+
+    highlighted_parts.append(escape_html(text[last_end:]))
+    return "".join(highlighted_parts)
