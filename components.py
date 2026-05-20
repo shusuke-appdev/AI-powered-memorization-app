@@ -3,7 +3,7 @@ import json
 import streamlit.components.v1 as components
 
 
-def render_audio_player(playlist):
+def render_audio_player(playlist: list[dict[str, str]]) -> None:
     """
     オーディオプレイヤーコンポーネントをレンダリングする
 
@@ -23,13 +23,13 @@ def render_audio_player(playlist):
             <div id="current-text" style="font-size: 18px; margin: 15px 0; min-height: 100px; line-height: 1.6; color: #374151;">
                 再生ボタンを押して開始してください
             </div>
-            
+
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="prevTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">\u23ee 前へ</button>
                 <button id="play-btn" onclick="togglePlay()" style="flex: 2; padding: 10px; border-radius: 8px; border: none; background: #10b981; color: white; font-weight: bold; cursor: pointer;">\u25b6 再生</button>
                 <button onclick="nextTrack()" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e7eb; cursor: pointer;">次へ \u23ed</button>
             </div>
-            
+
             <div style="margin-top: 15px; font-size: 14px; color: #6b7280; text-align: center;">
                 <span id="current-index">0</span> / <span id="total-count">0</span>
             </div>
@@ -60,13 +60,13 @@ def render_audio_player(playlist):
 
             function speak() {{
                 if (playlist.length === 0) return;
-                
+
                 synth.cancel(); // 前の読み上げをキャンセル
-                
+
                 const track = playlist[currentIndex];
                 // 空欄(_____)を「空欄」と読み上げるように置換
                 const textToSpeak = track.text.replace(/_+/g, '空欄');
-                
+
                 currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
                 currentUtterance.lang = 'ja-JP';
                 currentUtterance.rate = 1.0;

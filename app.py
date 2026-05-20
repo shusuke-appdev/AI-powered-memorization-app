@@ -97,7 +97,9 @@ try:
         show_login_page(cookie_controller)
 except DatabaseConnectionError as e:
     st.error(f"⚠️ {e.message}")
-    st.info("🔄 ページを再読み込みしてください。問題が続く場合は、しばらく待ってから再試行してください。")
+    st.info(
+        "🔄 ページを再読み込みしてください。問題が続く場合は、しばらく待ってから再試行してください。"
+    )
     if st.button("再読み込み"):
         from database import reset_connection
 

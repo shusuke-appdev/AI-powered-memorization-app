@@ -37,8 +37,7 @@ def render_add_card_page(user_id: str) -> None:
     with cancel_col:
         st.markdown("")
         has_progress = (
-            "generated_cards" in st.session_state
-            or st.session_state.add_card_text
+            "generated_cards" in st.session_state or st.session_state.add_card_text
         )
         if has_progress:
             if st.button("🔄 クリア", type="secondary", use_container_width=True):
@@ -54,7 +53,9 @@ def render_add_card_page(user_id: str) -> None:
     is_blank_disabled = selected_type in BLANK_DISABLED_TYPES
 
     if is_blank_disabled:
-        _render_no_blank_flow(user_id, card_title, selected_category, selected_type, selected_rank)
+        _render_no_blank_flow(
+            user_id, card_title, selected_category, selected_type, selected_rank
+        )
     else:
         _render_blank_flow(
             user_id, card_title, selected_category, selected_type, selected_rank
@@ -122,7 +123,11 @@ def _render_category_select() -> str:
 
 def _render_rank_select() -> str:
     """ランク選択"""
-    rank_idx = RANKS.index(st.session_state.add_card_rank) if st.session_state.add_card_rank in RANKS else 3
+    rank_idx = (
+        RANKS.index(st.session_state.add_card_rank)
+        if st.session_state.add_card_rank in RANKS
+        else 3
+    )
     wkey = f"rank_select_{st.session_state.widget_key_counter}"
     selected = st.selectbox(
         "重要度ランク",
@@ -139,10 +144,7 @@ def _render_type_select() -> str:
     """タイプ選択"""
     types_with_placeholder = ["-- タイプを選択 --"] + CARD_TYPES
     type_idx = 0
-    if (
-        st.session_state.add_card_type
-        and st.session_state.add_card_type in CARD_TYPES
-    ):
+    if st.session_state.add_card_type and st.session_state.add_card_type in CARD_TYPES:
         type_idx = types_with_placeholder.index(st.session_state.add_card_type)
     wkey = f"type_select_{st.session_state.widget_key_counter}"
     selected_raw = st.selectbox(
@@ -186,7 +188,7 @@ def _render_no_blank_flow(
     """穴埋めなしタイプ（知識・類型）のフロー"""
     st.subheader("① テキストとハイライト語句を入力")
     st.info(
-        f'📝 「{selected_type}」タイプ: 穴埋めなしで保存します。問題文中の特定の語句をハイライトしたい場合は以下で指定してください。'
+        f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。問題文中の特定の語句をハイライトしたい場合は以下で指定してください。"
     )
 
     wkey = f"text_input_{st.session_state.widget_key_counter}"
@@ -227,14 +229,22 @@ def _render_no_blank_flow(
             st.warning("テキストを入力してください。")
         else:
             source_id = add_source_card(
-                user_id, source_text, title=card_title,
-                category=selected_category, card_type=selected_type,
+                user_id,
+                source_text,
+                title=card_title,
+                category=selected_category,
+                card_type=selected_type,
             )
             add_card(
-                user_id, source_text, "",
-                title=card_title, category=selected_category,
-                source_id=source_id, blank_count=0,
-                card_type=selected_type, rank=selected_rank,
+                user_id,
+                source_text,
+                "",
+                title=card_title,
+                category=selected_category,
+                source_id=source_id,
+                blank_count=0,
+                card_type=selected_type,
+                rank=selected_rank,
                 highlighted_keywords=highlight_text,
             )
             st.success("保存しました！")
@@ -298,7 +308,9 @@ def _render_manual_generate(source_text: str) -> None:
                 st.session_state.generated_cards = cards
                 st.success(f"{len(cards)} 枚のカードを生成しました！")
             else:
-                st.error("カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。")
+                st.error(
+                    "カードの生成に失敗しました。【】で穴埋め箇所を正しく指定してください。"
+                )
 
 
 def _render_save_form(
@@ -317,10 +329,26 @@ def _render_save_form(
             st.markdown(f"**カード {i + 1}**")
             col1, col2 = st.columns(2)
             with col1:
-                q = st.text_input("問題", value=card["question"], key=f"q_{i}", label_visibility="collapsed", placeholder="問題")
+                q = st.text_input(
+                    "問題",
+                    value=card["question"],
+                    key=f"q_{i}",
+                    label_visibility="collapsed",
+                    placeholder="問題",
+                )
             with col2:
-                a_label = "答え（ハイライトする語句）" if selected_type in ("知識", "類型") else "答え"
-                a = st.text_input(a_label, value=card["answer"], key=f"a_{i}", label_visibility="collapsed", placeholder="答え")
+                a_label = (
+                    "答え（ハイライトする語句）"
+                    if selected_type in ("知識", "類型")
+                    else "答え"
+                )
+                a = st.text_input(
+                    a_label,
+                    value=card["answer"],
+                    key=f"a_{i}",
+                    label_visibility="collapsed",
+                    placeholder="答え",
+                )
             cards_to_save.append({"question": q, "answer": a})
 
             if selected_type in ("知識", "類型") and a:
@@ -336,8 +364,11 @@ def _render_save_form(
             source_id = None
             if original_text:
                 source_id = add_source_card(
-                    user_id, original_text, title=card_title,
-                    category=selected_category, card_type=selected_type,
+                    user_id,
+                    original_text,
+                    title=card_title,
+                    category=selected_category,
+                    card_type=selected_type,
                 )
 
             count = 0
@@ -345,10 +376,15 @@ def _render_save_form(
             for card in cards_to_save:
                 if card["question"] and card["answer"]:
                     add_card(
-                        user_id, card["question"], card["answer"],
-                        title=card_title, category=selected_category,
-                        source_id=source_id, blank_count=blank_count,
-                        card_type=selected_type, rank=selected_rank,
+                        user_id,
+                        card["question"],
+                        card["answer"],
+                        title=card_title,
+                        category=selected_category,
+                        source_id=source_id,
+                        blank_count=blank_count,
+                        card_type=selected_type,
+                        rank=selected_rank,
                     )
                     count += 1
 

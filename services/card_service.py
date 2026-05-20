@@ -11,10 +11,31 @@ import re
 from config import BLANKS_PER_CARD
 from services.html_rendering import escape_html
 
-PUNCTUATION_SET: frozenset[str] = frozenset({
-    "。", "、", "，", "．", ",", ".", "！", "？", "!", "?",
-    "：", ":", "；", ";", "「", "」", "（", "）", "(", ")",
-})
+PUNCTUATION_SET: frozenset[str] = frozenset(
+    {
+        "。",
+        "、",
+        "，",
+        "．",
+        ",",
+        ".",
+        "！",
+        "？",
+        "!",
+        "?",
+        "：",
+        ":",
+        "；",
+        ";",
+        "「",
+        "」",
+        "（",
+        "）",
+        "(",
+        ")",
+    }
+)
+
 
 def merge_adjacent_selections(
     phrases: list[str], selected_indices: list[int]
@@ -127,7 +148,9 @@ def generate_cards_from_selection(
 
             # 最後のカードが5箇所未満の場合、他の穴埋め箇所から重複補充
             if len(card_group_indices) < BLANKS_PER_CARD:
-                other_indices = [gi for gi in group_indices if gi not in card_group_indices]
+                other_indices = [
+                    gi for gi in group_indices if gi not in card_group_indices
+                ]
                 supplement = random.sample(
                     other_indices,
                     min(BLANKS_PER_CARD - len(card_group_indices), len(other_indices)),

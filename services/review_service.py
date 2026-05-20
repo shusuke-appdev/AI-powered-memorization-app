@@ -282,14 +282,17 @@ def _adjust_to_target_blanks(
     総穴埋め数を目標値に近づけるよう調整
     ※同一source_idのカードが選ばれないようチェック
     """
-    current_blanks = sum(c.get("blank_count", 1) for c in selected)
+    selected = _dedupe_cards_by_id(selected)
+    candidates = _dedupe_cards_by_id(candidates)
+    current_blanks = _sum_blank_count(selected)
 
     if abs(current_blanks - target) < 1:
-        return selected
+        return _fill_unique_selection(selected, candidates, limit)
 
-    # setベースで高速比較（O(n²)→O(n)）
-    selected_ids = set(id(c) for c in selected)
-    not_selected = [c for c in candidates if id(c) not in selected_ids]
+    def get_selected_card_ids(cards: list[dict[str, Any]]) -> set[str]:
+        return {
+            card_id for card in cards if (card_id := _get_card_id(card)) is not None
+        }
 
     def get_selected_source_ids(cards: list[dict[str, Any]]) -> set[str]:
         return {c.get("source_id") for c in cards if c.get("source_id") is not None}
@@ -298,7 +301,11 @@ def _adjust_to_target_blanks(
         if abs(current_blanks - target) < 1:
             break
 
+        selected_card_ids = get_selected_card_ids(selected)
         selected_source_ids = get_selected_source_ids(selected)
+        not_selected = [
+            card for card in candidates if _get_card_id(card) not in selected_card_ids
+        ]
 
         if current_blanks > target:
             high_blank_cards = sorted(
@@ -319,13 +326,8 @@ def _adjust_to_target_blanks(
                         continue
 
                     if low_card.get("blank_count", 1) < high_card.get("blank_count", 1):
-                        selected = [c for c in selected if c is not high_card] + [
-                            low_card
-                        ]
-                        not_selected = [
-                            c for c in not_selected if c is not low_card
-                        ] + [high_card]
-                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
+                        selected = _replace_selected_card(selected, high_card, low_card)
+                        current_blanks = _sum_blank_count(selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
@@ -346,18 +348,61 @@ def _adjust_to_target_blanks(
                         continue
 
                     if high_card.get("blank_count", 1) > low_card.get("blank_count", 1):
-                        selected = [c for c in selected if c is not low_card] + [
-                            high_card
-                        ]
-                        not_selected = [
-                            c for c in not_selected if c is not high_card
-                        ] + [low_card]
-                        current_blanks = sum(c.get("blank_count", 1) for c in selected)
+                        selected = _replace_selected_card(selected, low_card, high_card)
+                        current_blanks = _sum_blank_count(selected)
                         break
                 if abs(current_blanks - target) < 1:
                     break
 
-    return selected[:limit]
+    return _fill_unique_selection(selected, candidates, limit)
+
+
+def _sum_blank_count(cards: list[dict[str, Any]]) -> int:
+    """カード群の穴埋め数合計を返す。"""
+    return sum(c.get("blank_count", 1) for c in cards)
+
+
+def _replace_selected_card(
+    selected: list[dict[str, Any]],
+    old_card: dict[str, Any],
+    new_card: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """選定済みカードを1件入れ替え、カードIDの重複を防ぐ。"""
+    new_card_id = _get_card_id(new_card)
+    replaced: list[dict[str, Any]] = []
+
+    for card in selected:
+        if card is old_card:
+            replaced.append(new_card)
+            continue
+        if _get_card_id(card) == new_card_id:
+            continue
+        replaced.append(card)
+
+    return _dedupe_cards_by_id(replaced)
+
+
+def _fill_unique_selection(
+    selected: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """選定結果を一意カードIDに正規化し、不足分を候補から補充する。"""
+    filled = _dedupe_cards_by_id(selected)
+    selected_ids = {
+        card_id for card in filled if (card_id := _get_card_id(card)) is not None
+    }
+
+    for candidate in candidates:
+        if len(filled) >= limit:
+            break
+        candidate_id = _get_card_id(candidate)
+        if candidate_id is None or candidate_id in selected_ids:
+            continue
+        filled.append(candidate)
+        selected_ids.add(candidate_id)
+
+    return filled[:limit]
 
 
 def _normalize_card_ids(

@@ -48,13 +48,19 @@ def _render_login_form(cookie_controller: CookieController) -> None:
     """ユーザー選択ログインを表示"""
     users = get_all_users()
     if not users:
-        st.info("登録されているユーザーがいません。「新規登録」タブからユーザーを作成してください。")
+        st.info(
+            "登録されているユーザーがいません。「新規登録」タブからユーザーを作成してください。"
+        )
         return
 
     st.markdown("アカウントを選択してログインしてください：")
     for user in users:
-        if st.button(f"👤 {user['username']}", key=f"login_btn_{user['id']}", use_container_width=True):
-            success, message, user_id = login_user_direct(user['id'])
+        if st.button(
+            f"👤 {user['username']}",
+            key=f"login_btn_{user['id']}",
+            use_container_width=True,
+        ):
+            success, message, user_id = login_user_direct(user["id"])
             if success:
                 _set_login_session(cookie_controller, user_id, user["username"])
                 st.success(message)

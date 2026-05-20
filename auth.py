@@ -129,7 +129,12 @@ def update_daily_quota_limit(user_id: str, limit: int) -> bool:
     """ユーザーの1日のノルマ上限を更新（DBとセッションキャッシュ）"""
     supabase = get_supabase()
     limit = int(limit)
-    result = supabase.table("users").update({"daily_quota": limit}).eq("id", user_id).execute()
+    result = (
+        supabase.table("users")
+        .update({"daily_quota": limit})
+        .eq("id", user_id)
+        .execute()
+    )
 
     st.session_state[f"daily_quota_{user_id}"] = limit
     return bool(result.data)

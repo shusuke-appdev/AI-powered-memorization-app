@@ -78,8 +78,12 @@ def calculate_statistics(
     today = datetime.date.today().isoformat()
 
     total_cards = len(cards)
-    mastered_cards = sum(1 for c in cards if c.get("repetitions", 0) >= MASTERY_THRESHOLD)
-    learning_cards = sum(1 for c in cards if 0 < c.get("repetitions", 0) < MASTERY_THRESHOLD)
+    mastered_cards = sum(
+        1 for c in cards if c.get("repetitions", 0) >= MASTERY_THRESHOLD
+    )
+    learning_cards = sum(
+        1 for c in cards if 0 < c.get("repetitions", 0) < MASTERY_THRESHOLD
+    )
     new_cards = sum(1 for c in cards if c.get("repetitions", 0) == 0)
     due_today = sum(1 for c in cards if c.get("next_review", "") <= today)
 
@@ -126,5 +130,7 @@ def calculate_statistics(
         "category_stats": dict(category_stats),
         "difficulty_distribution": difficulty_distribution,
         "average_ease_factor": round(average_ease_factor, 2),
-        "mastery_rate": round(mastered_cards / total_cards * 100, 1) if total_cards > 0 else 0,
+        "mastery_rate": round(mastered_cards / total_cards * 100, 1)
+        if total_cards > 0
+        else 0,
     }

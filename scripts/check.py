@@ -3,11 +3,12 @@ import subprocess
 import sys
 
 
-def run_command(command, description):
+def run_command(command: list[str], description: str) -> bool:
+    """検証コマンドを実行し、成否を返す。"""
     print(f"\n[Code Factory] Executing: {description}...")
     try:
         # Run command and show output directly to user/agent
-        result = subprocess.run(command, shell=True, check=False, text=True)
+        result = subprocess.run(command, check=False, text=True)
         if result.returncode != 0:
             print(f"FAILED: {description} failed or found issues.")
             return False
@@ -18,13 +19,22 @@ def run_command(command, description):
         return False
 
 
-def main():
+def main() -> None:
+    """プロジェクトの基本的な整形・lint・テストを実行する。"""
     print("Starting Code Factory Lite checks...")
 
     # Check if tools are installed
     try:
-        subprocess.run(["ruff", "--version"], check=True, capture_output=True)
-        subprocess.run(["pytest", "--version"], check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, "-m", "ruff", "--version"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [sys.executable, "-m", "pytest", "--version"],
+            check=True,
+            capture_output=True,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("Tools not found. Installing dependencies...")
         subprocess.run(
@@ -32,14 +42,20 @@ def main():
         )
 
     # 1. Format (Ruff)
-    run_command("ruff format .", "Formatting code")
+    run_command([sys.executable, "-m", "ruff", "format", "."], "Formatting code")
 
     # 2. Lint & Fix (Ruff)
-    lint_success = run_command("ruff check . --fix", "Linting & Fixing code")
+    lint_success = run_command(
+        [sys.executable, "-m", "ruff", "check", ".", "--fix"],
+        "Linting & Fixing code",
+    )
 
     # 3. Test (Pytest)
     if os.path.isdir("tests"):
-        test_success = run_command("pytest", "Running tests")
+        test_success = run_command(
+            [sys.executable, "-m", "pytest", "tests", "-p", "no:cacheprovider"],
+            "Running tests",
+        )
     else:
         print("INFO: 'tests' directory not found. Skipping tests.")
         test_success = True

@@ -20,7 +20,12 @@ def render_sidebar(user_id: str, username: str) -> None:
         _render_quota_section(user_id)
 
         st.markdown("---")
-        if st.button("🚪 ログアウト", use_container_width=True, key="sidebar_logout", type="primary"):
+        if st.button(
+            "🚪 ログアウト",
+            use_container_width=True,
+            key="sidebar_logout",
+            type="primary",
+        ):
             _logout()
 
 
@@ -30,11 +35,15 @@ def _render_dark_mode_toggle() -> None:
         st.session_state.dark_mode = False
 
     if st.session_state.dark_mode:
-        if st.button("☀️ ライトモードに切替", key="theme_toggle", use_container_width=True):
+        if st.button(
+            "☀️ ライトモードに切替", key="theme_toggle", use_container_width=True
+        ):
             st.session_state.dark_mode = False
             st.rerun()
     else:
-        if st.button("🌙 ダークモードに切替", key="theme_toggle", use_container_width=True):
+        if st.button(
+            "🌙 ダークモードに切替", key="theme_toggle", use_container_width=True
+        ):
             st.session_state.dark_mode = True
             st.rerun()
 
@@ -50,8 +59,13 @@ def _render_quota_section(user_id: str) -> None:
     with col_input:
         current_quota = get_daily_quota_limit(user_id)
         new_quota = st.number_input(
-            "上限", min_value=1, max_value=100, value=current_quota,
-            step=1, key="sidebar_quota", label_visibility="collapsed",
+            "上限",
+            min_value=1,
+            max_value=100,
+            value=current_quota,
+            step=1,
+            key="sidebar_quota",
+            label_visibility="collapsed",
         )
         if new_quota != current_quota:
             update_daily_quota_limit(user_id, new_quota)

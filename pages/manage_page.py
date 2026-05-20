@@ -29,7 +29,9 @@ def render_manage_page(user_id: str) -> None:
     source_cards = load_source_cards(user_id)
 
     if not source_cards and not cards:
-        st.info("まだカードがありません。「カードを追加」メニューから作成してください。")
+        st.info(
+            "まだカードがありません。「カードを追加」メニューから作成してください。"
+        )
         return
 
     st.markdown(f"**原文カード: {len(source_cards)} 件 / 暗記カード: {len(cards)} 枚**")
@@ -52,8 +54,12 @@ def render_manage_page(user_id: str) -> None:
     for i, category in enumerate(CATEGORIES):
         with tabs[i]:
             _render_category_tab(
-                user_id, category, cards, source_cards,
-                search_query, selected_type_filter,
+                user_id,
+                category,
+                cards,
+                source_cards,
+                search_query,
+                selected_type_filter,
             )
 
 
@@ -78,20 +84,24 @@ def _render_category_tab(
     if search_query:
         query_lower = search_query.lower()
         category_sources = [
-            s for s in category_sources
+            s
+            for s in category_sources
             if query_lower in s.get("source_text", "").lower()
             or query_lower in s.get("title", "").lower()
         ]
 
     orphan_cards = [
-        c for c in cards
+        c
+        for c in cards
         if c.get("category", "その他") == category and not c.get("source_id")
     ]
     if search_query:
         query_lower = search_query.lower()
         orphan_cards = [
-            c for c in orphan_cards
-            if query_lower in c["question"].lower() or query_lower in c["answer"].lower()
+            c
+            for c in orphan_cards
+            if query_lower in c["question"].lower()
+            or query_lower in c["answer"].lower()
         ]
 
     if not category_sources and not orphan_cards:
@@ -126,16 +136,24 @@ def _render_source_card_expander(
     ):
         # 原文表示・編集
         st.markdown("**📝 原文**")
-        edited_source = st.text_area("", value=source_text, height=120, key=f"edit_source_{source_id}")
+        edited_source = st.text_area(
+            "", value=source_text, height=120, key=f"edit_source_{source_id}"
+        )
 
         meta_col1, meta_col2 = st.columns(2)
         with meta_col1:
             current_type = sc.get("card_type")
-            type_index = CARD_TYPES.index(current_type) if current_type in CARD_TYPES else 0
-            new_type = st.selectbox("タイプ", CARD_TYPES, index=type_index, key=f"edit_type_{source_id}")
+            type_index = (
+                CARD_TYPES.index(current_type) if current_type in CARD_TYPES else 0
+            )
+            new_type = st.selectbox(
+                "タイプ", CARD_TYPES, index=type_index, key=f"edit_type_{source_id}"
+            )
         with meta_col2:
             cat_index = CATEGORIES.index(category) if category in CATEGORIES else 0
-            new_category = st.selectbox("カテゴリ", CATEGORIES, index=cat_index, key=f"edit_cat_{source_id}")
+            new_category = st.selectbox(
+                "カテゴリ", CATEGORIES, index=cat_index, key=f"edit_cat_{source_id}"
+            )
 
         source_modified = edited_source != source_text
         type_modified = new_type != sc.get("card_type")
@@ -159,28 +177,36 @@ def _render_source_card_expander(
             changed_items.append("カテゴリ")
 
         for j, card in enumerate(linked_cards):
-            c_type = new_type if type_modified else card.get("card_type", sc.get("card_type"))
+            c_type = (
+                new_type
+                if type_modified
+                else card.get("card_type", sc.get("card_type"))
+            )
             new_q = st.session_state.get(f"q_{card['id']}")
             if new_q is not None and new_q != card["question"]:
                 any_card_modified = True
-                changed_items.append(f"カード{j+1}の問題")
-                
+                changed_items.append(f"カード{j + 1}の問題")
+
             new_a = st.session_state.get(f"a_{card['id']}")
             if c_type in ("知識", "類型"):
-                if new_a is not None and new_a != card.get("highlighted_keywords", card.get("answer", "")):
+                if new_a is not None and new_a != card.get(
+                    "highlighted_keywords", card.get("answer", "")
+                ):
                     any_card_modified = True
-                    changed_items.append(f"カード{j+1}のハイライト語")
+                    changed_items.append(f"カード{j + 1}のハイライト語")
             else:
                 if new_a is not None and new_a != card["answer"]:
                     any_card_modified = True
-                    changed_items.append(f"カード{j+1}の答え")
-                    
+                    changed_items.append(f"カード{j + 1}の答え")
+
             new_r = st.session_state.get(f"r_{card['id']}")
             if new_r is not None and new_r != card.get("rank", "B"):
                 any_card_modified = True
-                changed_items.append(f"カード{j+1}のランク")
-        
-        has_changes = source_modified or type_modified or cat_modified or any_card_modified
+                changed_items.append(f"カード{j + 1}のランク")
+
+        has_changes = (
+            source_modified or type_modified or cat_modified or any_card_modified
+        )
 
         # 操作ボタン
         st.markdown("---")
@@ -188,22 +214,39 @@ def _render_source_card_expander(
         btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
 
         with btn_col1:
-            if st.button("💾 保存", key=f"save_source_{source_id}", type="primary", use_container_width=True, disabled=not has_changes):
+            if st.button(
+                "💾 保存",
+                key=f"save_source_{source_id}",
+                type="primary",
+                use_container_width=True,
+                disabled=not has_changes,
+            ):
                 _save_source_and_cards(
-                    user_id, source_id, sc, linked_cards,
-                    edited_source, new_type, new_category,
-                    source_modified, type_modified, cat_modified,
+                    user_id,
+                    source_id,
+                    sc,
+                    linked_cards,
+                    edited_source,
+                    new_type,
+                    new_category,
+                    source_modified,
+                    type_modified,
+                    cat_modified,
                     changed_items,
                 )
 
         with btn_col2:
             fav_label = "⭐ 解除" if is_source_fav else "☆ 登録"
-            if st.button(fav_label, key=f"edit_fav_{source_id}", use_container_width=True):
+            if st.button(
+                fav_label, key=f"edit_fav_{source_id}", use_container_width=True
+            ):
                 toggle_favorite_by_source_id(user_id, source_id, not is_source_fav)
                 st.rerun()
 
         with btn_col3:
-            if st.button("🗑️ 全削除", key=f"del_all_{source_id}", use_container_width=True):
+            if st.button(
+                "🗑️ 全削除", key=f"del_all_{source_id}", use_container_width=True
+            ):
                 st.session_state[f"confirm_del_all_{source_id}"] = True
 
         # 削除確認
@@ -238,33 +281,53 @@ def _render_source_card_expander(
         regen_cards = st.session_state.get(f"regen_cards_{source_id}")
         if regen_cards:
             st.markdown("### 🔄 再生成プレビュー")
-            st.warning("「この内容で上書き保存」を押すと、既存の紐づきカードは削除され、以下のカードで上書きされます。")
+            st.warning(
+                "「この内容で上書き保存」を押すと、既存の紐づきカードは削除され、以下のカードで上書きされます。"
+            )
             cards_to_save = []
             for i, c in enumerate(regen_cards):
                 c1, c2 = st.columns(2)
                 with c1:
-                    q = st.text_input(f"新問題 {i+1}", value=c["question"], key=f"regen_q_{source_id}_{i}")
+                    q = st.text_input(
+                        f"新問題 {i + 1}",
+                        value=c["question"],
+                        key=f"regen_q_{source_id}_{i}",
+                    )
                 with c2:
-                    a = st.text_input(f"新答え {i+1}", value=c["answer"], key=f"regen_a_{source_id}_{i}")
+                    a = st.text_input(
+                        f"新答え {i + 1}",
+                        value=c["answer"],
+                        key=f"regen_a_{source_id}_{i}",
+                    )
                 cards_to_save.append({"question": q, "answer": a})
-            
-            if st.button("💾 この内容で暗記カードを上書き保存", type="primary", key=f"save_regen_{source_id}"):
+
+            if st.button(
+                "💾 この内容で暗記カードを上書き保存",
+                type="primary",
+                key=f"save_regen_{source_id}",
+            ):
                 if linked_cards:
                     delete_cards_batch(user_id, [lc["id"] for lc in linked_cards])
-                
+
                 update_source_card(
-                    user_id, source_id,
+                    user_id,
+                    source_id,
                     source_text=edited_source,
                     category=new_category,
                     card_type=new_type,
                 )
-                
+
                 for c in cards_to_save:
                     add_card(
-                        user_id, c["question"], c["answer"],
-                        title=source_title, category=new_category,
-                        source_id=source_id, blank_count=len(cards_to_save),
-                        card_type=new_type, rank="B"
+                        user_id,
+                        c["question"],
+                        c["answer"],
+                        title=source_title,
+                        category=new_category,
+                        source_id=source_id,
+                        blank_count=len(cards_to_save),
+                        card_type=new_type,
+                        rank="B",
                     )
                 del st.session_state[f"regen_cards_{source_id}"]
                 st.success("再生成したカードで上書き保存しました！")
@@ -316,7 +379,8 @@ def _save_source_and_cards(
     """原文カードと紐づき暗記カードを保存"""
     if source_modified or type_modified or cat_modified:
         update_source_card(
-            user_id, source_id,
+            user_id,
+            source_id,
             source_text=edited_source if source_modified else None,
             category=new_category if cat_modified else None,
             card_type=new_type if type_modified else None,
@@ -325,7 +389,9 @@ def _save_source_and_cards(
     updated_count = 0
     for card in linked_cards:
         new_q = st.session_state.get(f"q_{card['id']}", card["question"])
-        c_type = new_type if type_modified else card.get("card_type", sc.get("card_type"))
+        c_type = (
+            new_type if type_modified else card.get("card_type", sc.get("card_type"))
+        )
 
         if c_type in ("知識", "類型"):
             fallback_a = card.get("highlighted_keywords", card.get("answer", ""))
@@ -349,9 +415,15 @@ def _save_source_and_cards(
             or cat_modified
         ):
             update_card_content(
-                user_id, card["id"], new_q, ans_to_save,
-                card.get("title", ""), new_category, new_type,
-                rank=new_r, highlighted_keywords=hl_to_save,
+                user_id,
+                card["id"],
+                new_q,
+                ans_to_save,
+                card.get("title", ""),
+                new_category,
+                new_type,
+                rank=new_r,
+                highlighted_keywords=hl_to_save,
             )
             updated_count += 1
 
@@ -372,18 +444,33 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
             col_cat, col_type = st.columns(2)
             with col_cat:
                 new_cat = st.selectbox(
-                    "カテゴリ", CATEGORIES,
+                    "カテゴリ",
+                    CATEGORIES,
                     index=CATEGORIES.index(card.get("category", "その他")),
                 )
             with col_type:
                 current_type_orphan = card.get("card_type")
-                type_idx = CARD_TYPES.index(current_type_orphan) if current_type_orphan in CARD_TYPES else 0
-                new_type_orphan = st.selectbox("タイプ", CARD_TYPES, index=type_idx, key=f"orphan_type_{card['id']}")
+                type_idx = (
+                    CARD_TYPES.index(current_type_orphan)
+                    if current_type_orphan in CARD_TYPES
+                    else 0
+                )
+                new_type_orphan = st.selectbox(
+                    "タイプ",
+                    CARD_TYPES,
+                    index=type_idx,
+                    key=f"orphan_type_{card['id']}",
+                )
 
             if st.form_submit_button("✓ 更新"):
                 update_card_content(
-                    user_id, card["id"], new_q, new_a,
-                    card.get("title", ""), new_cat, card_type=new_type_orphan,
+                    user_id,
+                    card["id"],
+                    new_q,
+                    new_a,
+                    card.get("title", ""),
+                    new_cat,
+                    card_type=new_type_orphan,
                 )
                 st.success("更新しました")
                 st.rerun()

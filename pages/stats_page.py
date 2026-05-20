@@ -46,9 +46,15 @@ def _render_statistics_ui(stats: dict[str, Any]) -> None:
     with col1:
         st.metric("📚 総カード数", stats["total_cards"])
     with col2:
-        st.metric("✅ 習得済み", stats["mastered_cards"], help="連続5回以上正解したカード数")
+        st.metric(
+            "✅ 習得済み", stats["mastered_cards"], help="連続5回以上正解したカード数"
+        )
     with col3:
-        st.metric("📖 学習中", stats["learning_cards"], help="学習開始済みだが習得に達していないカード数")
+        st.metric(
+            "📖 学習中",
+            stats["learning_cards"],
+            help="学習開始済みだが習得に達していないカード数",
+        )
     with col4:
         st.metric("📅 本日復習", stats["due_today"])
 
@@ -59,9 +65,13 @@ def _render_statistics_ui(stats: dict[str, Any]) -> None:
         )
 
     st.markdown("**全体の難易度分布**")
-    st.caption("簡単：十分な連続正解があり定着しているカード / 普通：学習初期のカード / 難しい：復習間隔が詰まっている苦手カード")
+    st.caption(
+        "簡単：十分な連続正解があり定着しているカード / 普通：学習初期のカード / 難しい：復習間隔が詰まっている苦手カード"
+    )
     diff = stats["difficulty_distribution"]
-    st.markdown(f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}")
+    st.markdown(
+        f"🟢 簡単: {diff['easy']} | 🟡 普通: {diff['medium']} | 🔴 難しい: {diff['hard']}"
+    )
 
     st.markdown("---")
 
@@ -84,11 +94,13 @@ def _render_category_chart(category: str, data: dict[str, Any]) -> None:
 
     diff_data = data["difficulty"]
 
-    chart_df = pd.DataFrame([
-        {"Status": "簡単", "Count": diff_data["easy"]},
-        {"Status": "普通", "Count": diff_data["medium"]},
-        {"Status": "難しい", "Count": diff_data["hard"]},
-    ])
+    chart_df = pd.DataFrame(
+        [
+            {"Status": "簡単", "Count": diff_data["easy"]},
+            {"Status": "普通", "Count": diff_data["medium"]},
+            {"Status": "難しい", "Count": diff_data["hard"]},
+        ]
+    )
 
     chart_df = chart_df[chart_df["Count"] > 0]
 
@@ -119,7 +131,9 @@ def _render_category_chart(category: str, data: dict[str, Any]) -> None:
                 )
             ],
         )
-        fig.update_traces(textposition="inside", textinfo="percent", textfont_color="white")
+        fig.update_traces(
+            textposition="inside", textinfo="percent", textfont_color="white"
+        )
 
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{category}")
     else:

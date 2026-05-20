@@ -80,6 +80,39 @@ class TestDailyQuotaSelection(unittest.TestCase):
 
         self.assertEqual([card["id"] for card in selected], ["0", "1"])
 
+    def test_select_hybrid_quota_keeps_unique_ids_after_blank_adjustment(self) -> None:
+        due_cards = [
+            _make_review_card(str(i), blank_count=1, rank="A+") for i in range(20)
+        ]
+        due_cards.extend(
+            _make_review_card(str(i), blank_count=5, rank="C") for i in range(20, 30)
+        )
+
+        selected = select_hybrid_quota(due_cards, 20, due_cards)
+        selected_ids = [card["id"] for card in selected]
+
+        self.assertEqual(len(selected), 20)
+        self.assertEqual(len(set(selected_ids)), 20)
+
+    def test_initial_quota_reconciliation_returns_daily_limit_unique_ids(self) -> None:
+        due_cards = [
+            _make_review_card(str(i), blank_count=1, rank="A+") for i in range(20)
+        ]
+        due_cards.extend(
+            _make_review_card(str(i), blank_count=5, rank="C") for i in range(20, 30)
+        )
+
+        quota_ids = reconcile_daily_quota(
+            None,
+            [],
+            due_cards,
+            daily_limit=20,
+            all_cards=due_cards,
+        )
+
+        self.assertEqual(len(quota_ids), 20)
+        self.assertEqual(len(set(quota_ids)), 20)
+
 
 class TestCardGeneration(unittest.TestCase):
     def test_single_blank_no_filler(self) -> None:
@@ -199,16 +232,22 @@ class TestHtmlSafety(unittest.TestCase):
         self.assertNotIn("<b>", result)
 
 
-def _make_review_card(card_id: str) -> dict[str, object]:
+def _make_review_card(
+    card_id: str,
+    *,
+    blank_count: int = 1,
+    rank: str = "B",
+    category: str = "民法",
+) -> dict[str, object]:
     return {
         "id": card_id,
         "question": f"question {card_id}",
         "answer": f"answer {card_id}",
-        "category": "民法",
+        "category": category,
         "ease_factor": 2.5,
         "next_review": datetime.date.today().isoformat(),
-        "blank_count": 1,
-        "rank": "B",
+        "blank_count": blank_count,
+        "rank": rank,
     }
 
 
