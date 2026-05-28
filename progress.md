@@ -4,6 +4,14 @@
 
 ## 完了済み
 
+### プロダクト改善ロードマップ実装（2026-05-28）
+- **データ保全**: JSONバックアップをv2スキーマ化し、`source_cards` の `export_id` と `cards.source_export_id` の対応表で復元時の `source_id` を張り直すように変更。`rank`, `card_type`, `highlighted_keywords`, SM-2進捗, `blank_count`, `is_favorite` も維持する。
+- **書き込み整合性**: `use_cases/card_workflows.py` を追加し、カード作成・再生成・インポートの複数DB書き込みを集約。作成途中で失敗した場合は作成済みカード/原文を削除し、再生成では新カード作成成功後に旧カードを削除する。
+- **日次ノルマ永続化**: `migration_daily_assignments.sql` と `storage.py` の `daily_assignments` CRUDを追加。適用済みDBでは当日割当と完了状態を保存し、未適用DBでは従来のセッション状態へフォールバックする。
+- **スケール/運用品質**: `storage.py` のカード/原文読み込みをページング化し、CI workflow と読み取り専用の `scripts/check.py` に更新。アプリ基準日は `services/time_service.py` で日本時間に統一。
+- **検証**: `ruff format --check .`, `ruff check .`, `pytest tests -p no:cacheprovider -q` は25件成功、`compileall`, `python scripts/check.py` も成功。`streamlit run app.py --server.port 8501 --server.headless true` はHTTP 200応答、`python app.py` の直接実行もStreamlit bare mode警告のみで終了。in-app browser確認はCodex側sandboxで接続できず未実施。
+- **ライブ確認**: Supabase MCPで `daily_assignments`, `daily_assignments_data_api_grants`, `daily_assignment_index_and_policy_cleanup` を適用。Security Advisorは警告0件。Performance Advisorは未使用インデックスINFOのみ。`scripts/live_smoke.py` でログイン相当、セッション作成/削除、一時カード追加、復習進捗更新、日次割当保存/完了、削除と残骸0件を確認。
+
 ### Supabase Data API明示GRANT対応（2026-05-28）
 - **背景**: SupabaseのData API仕様変更により、`public` schemaの新規テーブルはPostgREST / GraphQL / Supabase clientから使う前に明示GRANTが必要になる。
 - **方針**: 現行どおりStreamlitサーバー側でSupabaseキーを秘匿する運用を前提に、`anon` / `authenticated` ではなく `service_role` のみに既存4テーブルのData API権限を明示する。

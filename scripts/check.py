@@ -23,7 +23,7 @@ def main() -> None:
     """プロジェクトの基本的な整形・lint・テストを実行する。"""
     print("Starting Code Factory Lite checks...")
 
-    # Check if tools are installed
+    # Check if tools are installed. CI/local checks must not install or rewrite.
     try:
         subprocess.run(
             [sys.executable, "-m", "ruff", "--version"],
@@ -36,31 +36,32 @@ def main() -> None:
             capture_output=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("Tools not found. Installing dependencies...")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "ruff", "pytest"], check=True
-        )
+        print("Tools not found. Run: python -m pip install -r requirements.txt")
+        sys.exit(1)
 
-    # 1. Format (Ruff)
-    run_command([sys.executable, "-m", "ruff", "format", "."], "Formatting code")
+    # 1. Format check (Ruff)
+    format_success = run_command(
+        [sys.executable, "-m", "ruff", "format", "--check", "."],
+        "Checking code format",
+    )
 
-    # 2. Lint & Fix (Ruff)
+    # 2. Lint (Ruff)
     lint_success = run_command(
-        [sys.executable, "-m", "ruff", "check", ".", "--fix"],
-        "Linting & Fixing code",
+        [sys.executable, "-m", "ruff", "check", "."],
+        "Linting code",
     )
 
     # 3. Test (Pytest)
     if os.path.isdir("tests"):
         test_success = run_command(
-            [sys.executable, "-m", "pytest", "tests", "-p", "no:cacheprovider"],
+            [sys.executable, "-m", "pytest", "tests", "-p", "no:cacheprovider", "-q"],
             "Running tests",
         )
     else:
         print("INFO: 'tests' directory not found. Skipping tests.")
         test_success = True
 
-    if not lint_success or not test_success:
+    if not format_success or not lint_success or not test_success:
         print("\nChecks completed with issues.")
         sys.exit(1)
     else:

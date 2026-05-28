@@ -26,4 +26,5 @@ CREATE POLICY "No public access" ON public.cards FOR ALL USING (false);
 
 -- source_cards
 DROP POLICY IF EXISTS "No public access" ON public.source_cards;
+DROP POLICY IF EXISTS "Users can manage own source cards" ON public.source_cards;
 CREATE POLICY "No public access" ON public.source_cards FOR ALL USING (false);

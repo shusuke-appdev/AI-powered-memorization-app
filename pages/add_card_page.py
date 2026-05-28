@@ -11,7 +11,7 @@ from services.card_service import (
     apply_highlight,
     parse_blanks_from_text,
 )
-from storage import add_card, add_source_card
+from use_cases.card_workflows import save_source_with_cards
 
 # セッション状態キー
 _SK_CATEGORY = "add_card_category"
@@ -228,24 +228,24 @@ def _render_no_blank_flow(
         if not source_text:
             st.warning("テキストを入力してください。")
         else:
-            source_id = add_source_card(
+            save_source_with_cards(
                 user_id,
-                source_text,
+                source_text=source_text,
                 title=card_title,
                 category=selected_category,
                 card_type=selected_type,
-            )
-            add_card(
-                user_id,
-                source_text,
-                "",
-                title=card_title,
-                category=selected_category,
-                source_id=source_id,
-                blank_count=0,
-                card_type=selected_type,
-                rank=selected_rank,
-                highlighted_keywords=highlight_text,
+                cards=[
+                    {
+                        "question": source_text,
+                        "answer": "",
+                        "title": card_title,
+                        "category": selected_category,
+                        "blank_count": 0,
+                        "card_type": selected_type,
+                        "rank": selected_rank,
+                        "highlighted_keywords": highlight_text,
+                    }
+                ],
             )
             st.success("保存しました！")
             _clear_all_state()
@@ -361,33 +361,33 @@ def _render_save_form(
 
         if st.form_submit_button("💾 デッキに保存", type="primary"):
             original_text = st.session_state.get("add_card_text", "")
-            source_id = None
-            if original_text:
-                source_id = add_source_card(
-                    user_id,
-                    original_text,
-                    title=card_title,
-                    category=selected_category,
-                    card_type=selected_type,
-                )
-
-            count = 0
+            cards_payload = []
             blank_count = len(cards_to_save)
             for card in cards_to_save:
                 if card["question"] and card["answer"]:
-                    add_card(
-                        user_id,
-                        card["question"],
-                        card["answer"],
-                        title=card_title,
-                        category=selected_category,
-                        source_id=source_id,
-                        blank_count=blank_count,
-                        card_type=selected_type,
-                        rank=selected_rank,
+                    cards_payload.append(
+                        {
+                            "question": card["question"],
+                            "answer": card["answer"],
+                            "title": card_title,
+                            "category": selected_category,
+                            "blank_count": blank_count,
+                            "card_type": selected_type,
+                            "rank": selected_rank,
+                        }
                     )
-                    count += 1
 
-            st.success(f"{count} 枚のカードを保存しました！（原文カードも保存済み）")
+            result = save_source_with_cards(
+                user_id,
+                source_text=original_text,
+                title=card_title,
+                category=selected_category,
+                card_type=selected_type,
+                cards=cards_payload,
+            )
+
+            st.success(
+                f"{result.card_count} 枚のカードを保存しました！（原文カードも保存済み）"
+            )
             _clear_all_state()
             st.rerun()

@@ -18,7 +18,8 @@ from export_import import (
     import_cards_json,
 )
 from stats import calculate_statistics
-from storage import add_card, add_source_card, load_cards, load_source_cards
+from storage import load_cards, load_source_cards
+from use_cases.card_workflows import import_backup_payload
 
 
 def render_stats_page(user_id: str) -> None:
@@ -216,36 +217,16 @@ def _render_export_import_ui(
                 if result["error"]:
                     st.error(result["error"])
                 else:
-                    imported_count = 0
-                    for card in result["cards"]:
-                        add_card(
-                            user_id,
-                            card["question"],
-                            card["answer"],
-                            title=card.get("title", ""),
-                            category=card.get("category", "その他"),
-                        )
-                        imported_count += 1
-
-                    # 原文カードもインポート（JSONの場合）
-                    source_imported = 0
-                    if file_type == "json" and result.get("source_cards"):
-                        for sc in result["source_cards"]:
-                            add_source_card(
-                                user_id,
-                                sc.get("source_text", ""),
-                                title=sc.get("title", ""),
-                                category=sc.get("category", "その他"),
-                            )
-                            source_imported += 1
-
-                    st.success(f"✅ {imported_count}枚のカードをインポートしました！")
-                    if result["skipped"] > 0:
+                    import_summary = import_backup_payload(user_id, result)
+                    st.success(
+                        f"✅ {import_summary.card_count}枚のカードをインポートしました！"
+                    )
+                    if import_summary.skipped_count > 0:
                         st.info(
-                            f"📋 {result['skipped']}枚の重複カードをスキップしました。"
+                            f"📋 {import_summary.skipped_count}枚の重複カードをスキップしました。"
                         )
-                    if source_imported > 0:
+                    if import_summary.source_count > 0:
                         st.info(
-                            f"📄 {source_imported}件の原文カードもインポートしました。"
+                            f"📄 {import_summary.source_count}件の原文カードもインポートしました。"
                         )
                     st.rerun()

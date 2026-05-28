@@ -5,11 +5,11 @@ UI表示は pages/stats_page.py に移動済み。
 
 from __future__ import annotations
 
-import datetime
 from collections import defaultdict
 from typing import Any
 
 from config import MASTERY_THRESHOLD
+from services.time_service import local_date_iso
 
 # ============ 難易度判定定数 ============
 
@@ -75,7 +75,7 @@ def calculate_statistics(
             "mastery_rate": 0,
         }
 
-    today = datetime.date.today().isoformat()
+    today = local_date_iso()
 
     total_cards = len(cards)
     mastered_cards = sum(

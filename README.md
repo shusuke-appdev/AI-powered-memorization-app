@@ -11,6 +11,7 @@
 - A+ から C までの重要度ランク
 - SM-2 ベースの復習間隔計算
 - 日次ノルマ、科目ラウンドロビン、重要度、苦手度、期限を考慮した出題選択
+- 日次ノルマ割当のDB保存（`daily_assignments` 適用後）
 - 原文カードと暗記カードの紐づけ管理
 - 原文単位のお気に入り
 - カード編集、削除、原文からの再生成
@@ -57,10 +58,14 @@ config.py                  カテゴリ、カードタイプ、ランク、ア�
 export_import.py           JSON/CSVの変換ロジック
 stats.py                   学習統計の計算
 pages/                     Streamlit画面
+use_cases/                 複数DB書き込みをまとめるユースケース
 services/review_service.py SM-2と日次出題選択
 services/card_service.py   穴埋めカード生成とハイライト
+services/time_service.py   日本時間基準の日付ヘルパー
 styles/                    CSS
 tests/                     ロジックテスト
+.github/workflows/ci.yml   ruff / pytest のCI
+scripts/live_smoke.py      Supabase接続のサービス層スモークテスト
 migration_*.sql            既存DBへの差分SQL
 ```
 
@@ -118,13 +123,27 @@ migration_*.sql            既存DBへの差分SQL
 | blank_count | 穴埋め量の目安 |
 | is_favorite | お気に入り |
 
+### daily_assignments
+
+| カラム | 用途 |
+| --- | --- |
+| id | 割当ID |
+| user_id | 所有者 |
+| assignment_date | ノルマ対象日 |
+| card_id | 割当カード |
+| source_id | 原文確認用の原文カードID |
+| position | 当日の出題順 |
+| completed_at | 完了時刻 |
+| quality | 自己評価 |
+
 ## 検証
 
 通常は次を使います。
 
 ```powershell
+ruff format --check .
 ruff check .
-pytest tests
+pytest tests -p no:cacheprovider -q
 ```
 
 環境構築と既知の検証課題は `DEVELOPMENT.md` と `CODE_AUDIT.md` を参照してください。

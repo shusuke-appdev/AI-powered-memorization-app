@@ -4,10 +4,9 @@
 
 ## フェーズ0: 検証環境の復旧
 
-- 新しい `.venv` を作成し、依存関係を再インストールする。
-- `ruff check .` と `pytest tests` をローカルで通す。
-- GitHub Actionsなどで同じ検証を自動化する。
-- `scripts/check.py` の自動インストールと `shell=True` を見直し、CI向けの明示コマンドにする。
+- 完了: `.venv` で `ruff` / `pytest` を実行可能。
+- 完了: GitHub Actionsで `ruff format --check .`, `ruff check .`, `pytest tests -p no:cacheprovider -q` を自動実行。
+- 完了: `scripts/check.py` を自動インストール/自動修正なしの検証コマンドに変更。
 
 完了条件:
 
@@ -69,11 +68,11 @@
 
 ## フェーズ5: インポート/エクスポートの仕様確定
 
-- JSONスキーマのバージョンを明文化する。
-- エクスポートに `card_type`, `rank`, `highlighted_keywords`, `source_id` の扱いを明記する。
+- 完了: JSONスキーマを `2.0` にし、原文カードの `export_id` と暗記カードの `source_export_id` で紐づきを復元する。
+- 完了: エクスポート/インポートで `card_type`, `rank`, `highlighted_keywords`, `source_id`, SM-2進捗を扱う。
 - インポート前にdry-run結果を表示する。
-- `skip`, `create_duplicate`, `update_existing` を明確に分ける。
-- 原文カードと暗記カードの紐づきを維持して復元する。
+- 完了: `skip`, `create_duplicate` を明確化。`update_existing` は未実装としてUI非表示を維持する。
+- 完了: 原文カードと暗記カードの紐づきを維持して復元する。
 - 型変換エラーを行単位で報告する。
 
 完了条件:
@@ -83,10 +82,10 @@
 
 ## フェーズ6: 日次ノルマと学習体験の安定化
 
-- `daily_assignments` テーブルを検討する。
-- 日付、ユーザー、カードID、出題順、完了状態を保存する。
+- 完了: `daily_assignments` テーブルを追加するマイグレーションを作成。
+- 完了: 日付、ユーザー、カードID、出題順、完了状態を保存する。
 - ノルマ変更時の補充ロジックをUse case化する。
-- 複数デバイスで同じ当日ノルマを共有する。
+- 完了: 適用済みDBでは複数セッションで同じ当日ノルマを共有する。
 - 穴埋め生成の乱数を排除またはseed化する。
 
 ## フェーズ7: テスト拡充
@@ -98,8 +97,8 @@
 
 ## すぐ着手すべき修正候補
 
-1. Python検証環境を作り直し、テストを実行する。
+1. Streamlit実機で主要フローを確認する。
 2. `users.api_key` の既存値をSupabase上で削除する。
-3. `pages/add_card_page.py` のプレビューHTMLもエスケープする。
+3. `migration_daily_assignments.sql` を本番相当DBへ適用する。
 4. 初期スキーマSQLを作り、外部キーとインデックスを追加する。
 5. インポートのdry-runと本当の上書き処理を設計する。

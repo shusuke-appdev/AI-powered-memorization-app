@@ -8,8 +8,10 @@
 flowchart LR
     User["利用者"] --> Streamlit["Streamlit UI"]
     Streamlit --> Pages["pages/*"]
+    Pages --> UseCases["use_cases/*"]
     Pages --> Services["services/* / stats.py / export_import.py"]
-    Pages --> Storage["storage.py / auth.py"]
+    UseCases --> Storage["storage.py / auth.py"]
+    Pages --> Storage
     Storage --> DB["Supabase PostgreSQL"]
     Pages --> BrowserSpeech["Web Speech API"]
 ```
@@ -32,6 +34,8 @@ flowchart LR
 
 - `services/card_service.py`: `【】` マーカーの解析、穴埋めカード生成、ハイライト適用。
 - `services/review_service.py`: SM-2計算、日次出題候補の選択。
+- `services/time_service.py`: アプリ基準日付を日本時間へ統一。
+- `use_cases/card_workflows.py`: カード作成、再生成、インポートの複数DB書き込みをまとめ、途中失敗時に作成分を戻す。
 - `stats.py`: 学習統計計算。
 - `export_import.py`: JSON/CSV変換。
 - `config.py`: カテゴリ、タイプ、ランク、アルゴリズム定数。
@@ -40,7 +44,7 @@ flowchart LR
 
 - `database.py`: Supabaseクライアント生成、接続情報解決、接続エラー。
 - `auth.py`: ユーザー、ノルマ、セッション。
-- `storage.py`: `cards` と `source_cards` のCRUD。
+- `storage.py`: `cards`, `source_cards`, `daily_assignments` のCRUDとページング読み込み。
 
 ## 主要フロー
 
@@ -58,35 +62,35 @@ flowchart LR
 
 1. `pages/add_card_page.py` でカテゴリ、ランク、タイプ、タイトル、原文を入力する。
 2. 穴埋めありタイプでは `services.card_service.parse_blanks_from_text()` が `【】` からカード候補を作る。
-3. 保存時に `storage.add_source_card()` で原文カードを作る。
-4. `storage.add_card()` で暗記カードを作る。
+3. 保存時に `use_cases.card_workflows.save_source_with_cards()` が原文カードと暗記カードをまとめて作る。
+4. 途中失敗時は作成済み暗記カードと原文カードを削除して、部分保存を避ける。
 5. `storage.clear_cards_cache()` / `clear_source_cards_cache()` でキャッシュを破棄する。
 
 ### 復習
 
 1. `pages/review_page.py` が `storage.load_cards()` でカードを読む。
 2. `next_review <= today` のカードを抽出する。
-3. `services.review_service.select_hybrid_quota()` で日次ノルマ候補を決める。
+3. `daily_assignments` に当日割当があればそれを使い、なければ `services.review_service.select_hybrid_quota()` で候補を決めて保存する。
 4. ユーザーの自己評価を `calculate_next_review()` に渡す。
-5. `storage.update_card_progress()` が進捗をDBへ保存する。
+5. `storage.update_card_progress()` が学習進捗を保存し、`mark_daily_assignment_complete()` が当日割当を完了済みにする。
 
 ### 管理
 
 1. `pages/manage_page.py` が原文カードと暗記カードを読み込む。
 2. 原文カードごとに紐づく暗記カードをUIで編集する。
 3. 保存時に `storage.update_source_card()` と `storage.update_card_content()` を呼ぶ。
-4. 再生成時は既存の紐づきカードを削除し、新しいカードを追加する。
+4. 再生成時は新カード作成に成功してから原文更新と旧カード削除を行い、途中失敗で既存カードを失わない。
 
 ### 統計/インポート/エクスポート
 
 1. `stats.calculate_statistics()` がカードの状態から集計を作る。
 2. `export_import.export_cards_json()` / `export_cards_csv()` が出力する。
 3. `import_cards_json()` / `import_cards_csv()` がアップロードファイルをパースする。
-4. `pages/stats_page.py` が `storage.add_card()` / `add_source_card()` で保存する。
+4. `use_cases.card_workflows.import_backup_payload()` が原文カードの新旧ID対応表を作り、暗記カードの `source_id` を復元して保存する。
 
 ## 現在の境界の弱い箇所
 
-- UI層がDB関数を直接呼び、トランザクション境界がない。
+- 一部UI層がまだDB関数を直接呼ぶ。
 - `dict[str, Any]` が多く、DB行、ドメインカード、UI入力の型が混在している。
 - StreamlitのHTML描画に未エスケープのユーザー入力が入る。
 - ログイン画面で任意のユーザーを選べるため、厳密な個人認証には向かない。
@@ -95,7 +99,7 @@ flowchart LR
 ## 望ましい方向性
 
 - ドメインモデルを `Card`, `SourceCard`, `User`, `ReviewState` として型定義する。
-- Use case 層を作り、UIからDBの直接操作を減らす。
+- Use case 層を広げ、UIからDBの直接操作をさらに減らす。
 - DB操作をRepositoryに集約し、書き込み単位を明確にする。
 - 厳密な個人認証が必要になった場合のみ、Supabase Authなどへ移行する。
 - RLS、キー管理を設計し直す。

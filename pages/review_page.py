@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import datetime
 from typing import Any
 
 import streamlit as st
@@ -13,9 +12,13 @@ from auth import get_daily_quota_limit
 from services.card_service import apply_highlight
 from services.html_rendering import escape_html, safe_category_class
 from services.review_service import calculate_next_review, reconcile_daily_quota
+from services.time_service import local_date_iso
 from storage import (
     get_source_cards_by_ids,
     load_cards,
+    load_daily_assignments,
+    mark_daily_assignment_complete,
+    save_daily_assignments,
     toggle_favorite_by_source_id,
     update_card_progress,
 )
@@ -36,7 +39,7 @@ def render_review_page(user_id: str) -> None:
     st.title("本日のノルマ")
 
     cards = load_cards(user_id)
-    today = datetime.date.today().isoformat()
+    today = local_date_iso()
     daily_limit = get_daily_quota_limit(user_id)
 
     # 日付が変わったらセッションをリセット
@@ -47,24 +50,52 @@ def render_review_page(user_id: str) -> None:
         st.session_state[_SK_REVIEWED_CARD_COUNT] = 0
         st.session_state[_SK_QUOTA_CARD_IDS] = None
 
-    reviewed_card_id_list: list[str] = st.session_state.get(_SK_REVIEWED_CARD_IDS, [])
-    reviewed_card_ids: set[str] = set(reviewed_card_id_list)
-
     # 期日カードの抽出（時刻付き文字列に対応するため先頭10文字だけで比較）
     all_due_cards = [c for c in cards if str(c.get("next_review", ""))[:10] <= today]
-
-    current_quota_ids = st.session_state.get(_SK_QUOTA_CARD_IDS)
-    quota_card_id_list = reconcile_daily_quota(
-        current_quota_ids,
-        reviewed_card_id_list,
-        all_due_cards,
-        daily_limit,
-        cards,
-    )
-    if quota_card_id_list != current_quota_ids:
-        st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
-
     cards_by_id: dict[str, dict[str, Any]] = {str(c["id"]): c for c in cards}
+
+    assignments = load_daily_assignments(user_id, today)
+    if assignments:
+        quota_card_id_list = [
+            str(item["card_id"])
+            for item in assignments
+            if str(item.get("card_id")) in cards_by_id
+        ]
+        db_reviewed_ids = [
+            str(item["card_id"]) for item in assignments if item.get("completed_at")
+        ]
+        session_reviewed_ids: list[str] = st.session_state.get(
+            _SK_REVIEWED_CARD_IDS, []
+        )
+        reviewed_card_id_list = list(
+            dict.fromkeys(db_reviewed_ids + session_reviewed_ids)
+        )
+        reviewed_source_ids = [
+            str(item["source_id"])
+            for item in assignments
+            if item.get("completed_at") and item.get("source_id")
+        ]
+        st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
+        st.session_state[_SK_REVIEWED_CARD_IDS] = reviewed_card_id_list
+        if reviewed_source_ids:
+            st.session_state[_SK_REVIEWED_SOURCE_IDS] = list(
+                dict.fromkeys(reviewed_source_ids)
+            )
+    else:
+        reviewed_card_id_list = st.session_state.get(_SK_REVIEWED_CARD_IDS, [])
+        current_quota_ids = st.session_state.get(_SK_QUOTA_CARD_IDS)
+        quota_card_id_list = reconcile_daily_quota(
+            current_quota_ids,
+            reviewed_card_id_list,
+            all_due_cards,
+            daily_limit,
+            cards,
+        )
+        if quota_card_id_list != current_quota_ids:
+            st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
+        save_daily_assignments(user_id, today, quota_card_id_list, cards_by_id)
+
+    reviewed_card_ids: set[str] = set(reviewed_card_id_list)
     due_cards = [
         cards_by_id[cid]
         for cid in quota_card_id_list
@@ -305,5 +336,11 @@ def _process_review(user_id: str, card: dict[str, Any], *, quality: int) -> None
 
     new_stats = calculate_next_review(quality, card)
     update_card_progress(user_id, card["id"], new_stats)
+    mark_daily_assignment_complete(
+        user_id,
+        local_date_iso(),
+        card["id"],
+        quality=quality,
+    )
     st.session_state[_SK_SHOW_ANSWER] = False
     st.rerun()

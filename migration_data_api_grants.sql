@@ -53,6 +53,16 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   public.source_cards
 TO service_role;
 
+DO $$
+BEGIN
+  IF to_regclass('public.daily_assignments') IS NOT NULL THEN
+    REVOKE ALL PRIVILEGES ON TABLE public.daily_assignments
+      FROM anon, authenticated, service_role;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.daily_assignments
+      TO service_role;
+  END IF;
+END $$;
+
 -- Safe no-op for UUID-only schemas, required if any serial/identity sequences
 -- exist now or are added before the next migration is applied.
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;

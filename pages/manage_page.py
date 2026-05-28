@@ -9,7 +9,6 @@ import streamlit as st
 from config import CARD_TYPES, CATEGORIES, RANKS
 from services.card_service import parse_blanks_from_text
 from storage import (
-    add_card,
     delete_card,
     delete_cards_batch,
     delete_source_card,
@@ -19,6 +18,7 @@ from storage import (
     update_card_content,
     update_source_card,
 )
+from use_cases.card_workflows import replace_source_cards
 
 
 def render_manage_page(user_id: str) -> None:
@@ -306,29 +306,29 @@ def _render_source_card_expander(
                 type="primary",
                 key=f"save_regen_{source_id}",
             ):
-                if linked_cards:
-                    delete_cards_batch(user_id, [lc["id"] for lc in linked_cards])
-
-                update_source_card(
+                cards_payload = [
+                    {
+                        "question": c["question"],
+                        "answer": c["answer"],
+                        "title": source_title,
+                        "category": new_category,
+                        "blank_count": len(cards_to_save),
+                        "card_type": new_type,
+                        "rank": "B",
+                    }
+                    for c in cards_to_save
+                    if c["question"] and c["answer"]
+                ]
+                replace_source_cards(
                     user_id,
-                    source_id,
+                    source_id=source_id,
                     source_text=edited_source,
+                    title=source_title,
                     category=new_category,
                     card_type=new_type,
+                    old_card_ids=[lc["id"] for lc in linked_cards],
+                    cards=cards_payload,
                 )
-
-                for c in cards_to_save:
-                    add_card(
-                        user_id,
-                        c["question"],
-                        c["answer"],
-                        title=source_title,
-                        category=new_category,
-                        source_id=source_id,
-                        blank_count=len(cards_to_save),
-                        card_type=new_type,
-                        rank="B",
-                    )
                 del st.session_state[f"regen_cards_{source_id}"]
                 st.success("再生成したカードで上書き保存しました！")
                 st.rerun()

@@ -10,6 +10,7 @@ import datetime
 from typing import Any
 
 from config import DEFAULT_EASE_FACTOR, MIN_EASE_FACTOR, RANK_WEIGHT
+from services.time_service import local_date_iso
 
 
 def calculate_next_review(quality: int, card_data: dict[str, Any]) -> dict[str, Any]:
@@ -44,13 +45,14 @@ def calculate_next_review(quality: int, card_data: dict[str, Any]) -> dict[str, 
     if ease_factor < MIN_EASE_FACTOR:
         ease_factor = MIN_EASE_FACTOR
 
-    next_review_date = datetime.date.today() + datetime.timedelta(days=interval)
+    today = datetime.date.fromisoformat(local_date_iso())
+    next_review_date = today + datetime.timedelta(days=interval)
 
     return {
         "repetitions": repetitions,
         "interval": interval,
         "ease_factor": ease_factor,
-        "last_review": datetime.date.today().isoformat(),
+        "last_review": today.isoformat(),
         "next_review": next_review_date.isoformat(),
     }
 
@@ -62,7 +64,7 @@ def get_initial_card_state() -> dict[str, Any]:
         "interval": 0,
         "ease_factor": DEFAULT_EASE_FACTOR,
         "last_review": None,
-        "next_review": datetime.date.today().isoformat(),
+        "next_review": local_date_iso(),
     }
 
 
