@@ -35,8 +35,16 @@ Streamlit Cloudでは `.streamlit/secrets.toml` 相当のSecretsに同名で設�
 現状のSQLは差分マイグレーションのみです。
 
 - `migration_rls.sql`: RLSを有効化し、全テーブルをpublicから拒否する。
+- `migration_data_api_grants.sql`: Supabase Data API向けに明示GRANTを設定する。現行運用では `service_role` のみに `users`, `sessions`, `cards`, `source_cards` のCRUD権限を付与し、`anon` / `authenticated` には付与しない。
 - `migration_type.sql`: `card_type` を追加する。
 - `migration_rank.sql`: `rank`, `daily_quota`, `highlighted_keywords` を追加する。
+
+Supabase Data APIの運用ルール:
+
+- RLSは「行単位の可視性」、GRANTは「Data APIからテーブルへ到達できるか」を制御する別レイヤー。
+- このアプリはStreamlitサーバー側からSupabase Python clientを使うため、`SUPABASE_KEY` は公開クライアント用のanon keyではなく、サーバー側だけで秘匿するservice role/secret系キーを使う。
+- 新しいテーブルを追加するときは、テーブル作成SQL、RLS設定、必要最小限のGRANTを同じ変更に含める。
+- ブラウザや外部クライアントからSupabaseへ直接アクセスする構成に変える場合は、`anon` / `authenticated` へのGRANTと所有者ベースのRLSポリシーを別途設計する。
 
 不足しているもの:
 
@@ -90,3 +98,5 @@ py -3.10 -m venv .venv
 - Supabaseキーは公開リポジトリ、ログ、スクリーンショットに出さない。
 - RLS全拒否 + 強いキーでのアプリ操作は、アプリサーバーが完全に信頼できる場合の暫定設計として扱う。
 - Streamlit CloudのSecrets設定とSupabaseのキー権限を定期確認する。
+- Supabase DashboardのSecurity Advisorで、Data APIに公開されているテーブルとRLS警告を定期確認する。
+- `migration_data_api_grants.sql` 実行後は、ログイン、カード追加、復習更新、統計表示、削除を本番相当データで1件ずつ確認する。

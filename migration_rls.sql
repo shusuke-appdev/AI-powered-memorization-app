@@ -1,12 +1,16 @@
 -- 全テーブルでRLS (Row Level Security) を有効化
--- これにより、デフォルトで全ての外部アクセスが拒否されます
+-- RLSは「どの行を読める/書けるか」を制御します。
+-- Data APIにテーブルを到達可能にするGRANTとは別レイヤーです。
+-- SupabaseのData API明示GRANT対応は migration_data_api_grants.sql を実行してください。
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.source_cards ENABLE ROW LEVEL SECURITY;
 
 -- 明示的に「アクセス拒否」ポリシーを作成（念のため）
--- Service Role Key（サーバー側管理者キー）はこれをバイパスできるため、アプリは動作します
+-- Service Role Key（サーバー側管理者キー）はRLSをバイパスできるため、アプリは動作します。
+-- anon/authenticated から直接Data APIを使う運用に変える場合は、
+-- 所有者ベースのRLSポリシーを別途設計してください。
 
 -- users
 DROP POLICY IF EXISTS "No public access" ON public.users;

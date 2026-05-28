@@ -1,8 +1,16 @@
 # Progress — AI暗記カードアプリ
 
-## 最終更新: 2026-05-20
+## 最終更新: 2026-05-28
 
 ## 完了済み
+
+### Supabase Data API明示GRANT対応（2026-05-28）
+- **背景**: SupabaseのData API仕様変更により、`public` schemaの新規テーブルはPostgREST / GraphQL / Supabase clientから使う前に明示GRANTが必要になる。
+- **方針**: 現行どおりStreamlitサーバー側でSupabaseキーを秘匿する運用を前提に、`anon` / `authenticated` ではなく `service_role` のみに既存4テーブルのData API権限を明示する。
+- **修正**: `migration_data_api_grants.sql` を追加し、将来オブジェクトの自動公開default privilegesを取り消し、`users`, `sessions`, `cards`, `source_cards` への `service_role` CRUD権限を明示。`migration_rls.sql`, `DEVELOPMENT.md`, `OPERATOR_ACTIONS.md` にRLSとGRANTの役割分担、Security Advisor確認、SQL実行後の確認観点を追記。
+- **本番適用**: Supabase project `zozsikyinpasapuxjbtg` に `data_api_explicit_grants` と `tighten_postgres_public_default_privileges` を適用。4テーブルの `anon` / `authenticated` 権限は消え、`service_role` はCRUDのみになった。Security Advisorは `lints: []`。
+- **本番検証**: 一時データ `codex-grant-smoke-20260528` でログイン相当、原文追加、カード追加、復習更新、読込、削除を確認。件数は `users=4`, `sessions=102`, `source_cards=122`, `cards=189` に戻った。
+- **残件**: `supabase_admin` 所有のdefault privilegesはMCPの `postgres` 権限では変更できないため、新規テーブルをDashboard UI等で作る場合も必ず同じ変更内で明示GRANTを確認する。
 
 ### 本日のノルマ初回1枚化バグ修正とアプリ本体点検（2026-05-20）
 - **不具合**: アプリ起動直後、本日のノルマが20枚あるユーザーでも特定カード1枚だけが表示され、その1枚を消化すると正規の20枚分が現れる状態になっていた。
