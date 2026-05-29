@@ -11,6 +11,12 @@ import re
 from config import BLANKS_PER_CARD
 from services.html_rendering import escape_html
 
+HIGHLIGHT_OPEN = "【"
+HIGHLIGHT_CLOSE = "】"
+_HIGHLIGHT_SPAN_START = (
+    '<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">'
+)
+
 PUNCTUATION_SET: frozenset[str] = frozenset(
     {
         "。",
@@ -164,6 +170,108 @@ def generate_cards_from_selection(
     return cards
 
 
+def contains_highlight_markers(text: str) -> bool:
+    """ハイライト用の【】マーカーが本文に含まれるかを返す。"""
+    return HIGHLIGHT_OPEN in text or HIGHLIGHT_CLOSE in text
+
+
+def validate_highlight_markers(text: str) -> tuple[bool, str, int]:
+    """知識・類型カード用の【】ハイライト指定を検証する。"""
+    if not contains_highlight_markers(text):
+        return True, "ハイライト指定はありません。", 0
+
+    in_marker = False
+    marker_chars: list[str] = []
+    marker_count = 0
+
+    for char in text:
+        if char == HIGHLIGHT_OPEN:
+            if in_marker:
+                return False, "ハイライト指定の中に別の【があります。", marker_count
+            in_marker = True
+            marker_chars = []
+            continue
+
+        if char == HIGHLIGHT_CLOSE:
+            if not in_marker:
+                return False, "】に対応する【がありません。", marker_count
+            if not "".join(marker_chars).strip():
+                return False, "空のハイライト指定があります。", marker_count
+            in_marker = False
+            marker_count += 1
+            marker_chars = []
+            continue
+
+        if in_marker:
+            marker_chars.append(char)
+
+    if in_marker:
+        return False, "【に対応する】がありません。", marker_count
+
+    return True, f"{marker_count}箇所のハイライトが指定されています。", marker_count
+
+
+def extract_highlight_keywords(text: str) -> str:
+    """本文内の【】マーカーから保存用のハイライト語句を抽出する。"""
+    is_valid, _message, _count = validate_highlight_markers(text)
+    if not is_valid:
+        return ""
+
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"【([^【】]+)】", text):
+        keyword = match.group(1).strip()
+        if keyword and keyword not in seen:
+            keywords.append(keyword)
+            seen.add(keyword)
+    return " ".join(keywords)
+
+
+def _highlight_span(text: str) -> str:
+    return f"{_HIGHLIGHT_SPAN_START}{escape_html(text)}</span>"
+
+
+def _apply_marker_highlight(text: str) -> str:
+    highlighted_parts: list[str] = []
+    last_end = 0
+    for match in re.finditer(r"【([^【】]+)】", text):
+        highlighted_parts.append(escape_html(text[last_end : match.start()]))
+        highlighted_parts.append(_highlight_span(match.group(1)))
+        last_end = match.end()
+
+    highlighted_parts.append(escape_html(text[last_end:]))
+    return "".join(highlighted_parts)
+
+
+def _apply_keyword_highlight(text: str, keywords_input: str) -> str:
+    if not text or not keywords_input:
+        return escape_html(text)
+
+    # 全角・半角スペース、読点、カンマ、中点で分割
+    keywords = [
+        k.strip() for k in re.split(r"[\s、，,・]+", keywords_input) if k.strip()
+    ]
+
+    if not keywords:
+        return escape_html(text)
+
+    # 文字列長の降順でソート
+    keywords = sorted(list(set(keywords)), key=len, reverse=True)
+
+    escaped_keywords = [re.escape(kw) for kw in keywords]
+    pattern = r"(" + "|".join(escaped_keywords) + r")"
+
+    highlighted_parts: list[str] = []
+    last_end = 0
+    for match in re.finditer(pattern, text):
+        highlighted_parts.append(escape_html(text[last_end : match.start()]))
+        highlighted_parts.append(_highlight_span(match.group(0)))
+        last_end = match.end()
+
+    highlighted_parts.append(escape_html(text[last_end:]))
+    return "".join(highlighted_parts)
+
+
 # ============ 旧API互換 ============
 
 
@@ -217,33 +325,11 @@ def generate_flashcards(text: str) -> list[dict[str, str]] | None:
 
 
 def apply_highlight(text: str, keywords_input: str) -> str:
-    """カードの「知識」「類型」カテゴリ向けハイライト置換処理（複数キーワード・多重置換対応）"""
-    if not text or not keywords_input:
+    """知識・類型カード向けのハイライトHTMLを生成する。"""
+    if contains_highlight_markers(text):
+        is_valid, _message, _count = validate_highlight_markers(text)
+        if is_valid:
+            return _apply_marker_highlight(text)
         return escape_html(text)
 
-    # 全角・半角スペース、読点、カンマ、中点で分割
-    keywords = [
-        k.strip() for k in re.split(r"[\s、，,・]+", keywords_input) if k.strip()
-    ]
-
-    if not keywords:
-        return escape_html(text)
-
-    # 文字列長の降順でソート
-    keywords = sorted(list(set(keywords)), key=len, reverse=True)
-
-    escaped_keywords = [re.escape(kw) for kw in keywords]
-    pattern = r"(" + "|".join(escaped_keywords) + r")"
-
-    highlighted_parts: list[str] = []
-    last_end = 0
-    for match in re.finditer(pattern, text):
-        highlighted_parts.append(escape_html(text[last_end : match.start()]))
-        highlighted_parts.append(
-            '<span style="color: #dc2626; text-decoration: underline; '
-            f'font-weight: bold;">{escape_html(match.group(0))}</span>'
-        )
-        last_end = match.end()
-
-    highlighted_parts.append(escape_html(text[last_end:]))
-    return "".join(highlighted_parts)
+    return _apply_keyword_highlight(text, keywords_input)

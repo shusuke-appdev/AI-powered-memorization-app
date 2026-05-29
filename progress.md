@@ -1,8 +1,14 @@
 # Progress — AI暗記カードアプリ
 
-## 最終更新: 2026-05-28
+## 最終更新: 2026-05-30
 
 ## 完了済み
+
+### 知識・類型カードの【】ハイライト指定化（2026-05-30）
+- **仕様変更**: 知識・類型カードのハイライト指定を、別入力の「ハイライト語」から本文内の `【】` 指定へ変更。復習・プレビュー表示では `【】` を出さず、囲まれた箇所だけを赤下線で表示する。
+- **互換性**: DBスキーマは変更せず、`highlighted_keywords` は新規カードでは `【】` から抽出して保存。本文に `【】` がない旧方式カードは既存の `highlighted_keywords` フォールバックで表示を維持する。
+- **UI**: カード追加画面とカード管理画面の知識・類型フローから「ハイライト語」欄を外し、本文欄で `【】` を直接編集する方式に統一。孤立カード編集も同じ保存ルールに合わせた。
+- **検証**: `ruff check services\card_service.py pages\add_card_page.py pages\manage_page.py pages\review_page.py tests\test_logic.py`, `pytest tests\test_logic.py -q`, `pytest tests -q` は成功。`streamlit run app.py --server.port 8501 --server.headless true` を起動し、`curl -I http://localhost:8501` でHTTP 200を確認。
 
 ### プロダクト改善ロードマップ実装（2026-05-28）
 - **データ保全**: JSONバックアップをv2スキーマ化し、`source_cards` の `export_id` と `cards.source_export_id` の対応表で復元時の `source_id` を張り直すように変更。`rank`, `card_type`, `highlighted_keywords`, SM-2進捗, `blank_count`, `is_favorite` も維持する。

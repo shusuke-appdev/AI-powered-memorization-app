@@ -9,7 +9,9 @@ import streamlit as st
 from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANKS
 from services.card_service import (
     apply_highlight,
+    extract_highlight_keywords,
     parse_blanks_from_text,
+    validate_highlight_markers,
 )
 from use_cases.card_workflows import save_source_with_cards
 
@@ -19,7 +21,6 @@ _SK_TITLE = "add_card_title"
 _SK_TEXT = "add_card_text"
 _SK_TYPE = "add_card_type"
 _SK_RANK = "add_card_rank"
-_SK_HIGHLIGHT = "add_card_highlight"
 _SK_WIDGET_KEY = "widget_key_counter"
 _SK_GENERATED_CARDS = "generated_cards"
 _SK_PREV_MANUAL_TEXT = "prev_manual_text"
@@ -70,7 +71,6 @@ def _init_session_state() -> None:
         _SK_TEXT: "",
         _SK_TYPE: "",
         _SK_RANK: "B",
-        _SK_HIGHLIGHT: "",
         _SK_WIDGET_KEY: 0,
     }
     for key, default in defaults.items():
@@ -87,7 +87,6 @@ def _clear_all_state() -> None:
     st.session_state[_SK_TITLE] = ""
     st.session_state[_SK_TEXT] = ""
     st.session_state[_SK_TYPE] = ""
-    st.session_state[_SK_HIGHLIGHT] = ""
     st.session_state[_SK_RANK] = "B"
     st.session_state[_SK_WIDGET_KEY] += 1
 
@@ -186,9 +185,9 @@ def _render_no_blank_flow(
     selected_rank: str,
 ) -> None:
     """穴埋めなしタイプ（知識・類型）のフロー"""
-    st.subheader("① テキストとハイライト語句を入力")
+    st.subheader("① テキストとハイライト箇所を入力")
     st.info(
-        f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。問題文中の特定の語句をハイライトしたい場合は以下で指定してください。"
+        f"📝 「{selected_type}」タイプ: 穴埋めなしで保存します。ハイライトしたい箇所は【】で囲んでください。"
     )
 
     wkey = f"text_input_{st.session_state.widget_key_counter}"
@@ -197,37 +196,32 @@ def _render_no_blank_flow(
     source_text = st.text_area(
         "原文テキスト",
         height=200,
-        placeholder="例: 民法第709条は不法行為による損害賠償を規定している。",
+        placeholder="例: 民法【709条】は【不法行為】による損害賠償を規定している。",
+        help="ハイライトなしで保存したい場合は【】を付けずに入力してください。",
         key=wkey,
         on_change=_sync_widget_to_state,
         args=(wkey, "add_card_text"),
     )
     st.session_state.add_card_text = source_text
 
-    hl_wkey = f"highlight_input_{st.session_state.widget_key_counter}"
-    if hl_wkey not in st.session_state:
-        st.session_state[hl_wkey] = st.session_state.add_card_highlight
-    highlight_text = st.text_input(
-        "答え（ハイライトする語句）",
-        placeholder="例: 不法行為 損害賠償",
-        help="複数の語句をハイライトする場合は、スペースで区切って入力してください。",
-        key=hl_wkey,
-        on_change=_sync_widget_to_state,
-        args=(hl_wkey, "add_card_highlight"),
-    )
-    st.session_state.add_card_highlight = highlight_text
-
-    if source_text and highlight_text:
-        preview_q = apply_highlight(source_text, highlight_text)
-        st.markdown(
-            f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'><strong>ハイライト表示プレビュー:</strong> <br/> {preview_q}</div>",
-            unsafe_allow_html=True,
+    marker_is_valid = True
+    marker_message = ""
+    if source_text:
+        marker_is_valid, marker_message, _count = validate_highlight_markers(
+            source_text
         )
+        if marker_is_valid:
+            _render_highlight_preview(source_text)
+        else:
+            st.warning(marker_message)
 
     if st.button("💾 保存", type="primary", key="save_no_blank_btn"):
         if not source_text:
             st.warning("テキストを入力してください。")
+        elif not marker_is_valid:
+            st.warning(marker_message)
         else:
+            highlighted_keywords = extract_highlight_keywords(source_text)
             save_source_with_cards(
                 user_id,
                 source_text=source_text,
@@ -243,13 +237,30 @@ def _render_no_blank_flow(
                         "blank_count": 0,
                         "card_type": selected_type,
                         "rank": selected_rank,
-                        "highlighted_keywords": highlight_text,
+                        "highlighted_keywords": highlighted_keywords,
                     }
                 ],
             )
             st.success("保存しました！")
             _clear_all_state()
             st.rerun()
+
+
+def _render_highlight_preview(text: str, keywords: str = "") -> None:
+    """知識・類型カードの表示プレビューを描画する。"""
+    if not text:
+        return
+
+    marker_is_valid, marker_message, _count = validate_highlight_markers(text)
+    if not marker_is_valid:
+        st.warning(marker_message)
+        return
+
+    preview_q = apply_highlight(text, keywords)
+    st.markdown(
+        f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'><strong>ハイライト表示プレビュー:</strong> <br/> {preview_q}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_blank_flow(
@@ -337,13 +348,8 @@ def _render_save_form(
                     placeholder="問題",
                 )
             with col2:
-                a_label = (
-                    "答え（ハイライトする語句）"
-                    if selected_type in ("知識", "類型")
-                    else "答え"
-                )
                 a = st.text_input(
-                    a_label,
+                    "答え",
                     value=card["answer"],
                     key=f"a_{i}",
                     label_visibility="collapsed",
@@ -351,12 +357,6 @@ def _render_save_form(
                 )
             cards_to_save.append({"question": q, "answer": a})
 
-            if selected_type in ("知識", "類型") and a:
-                preview_q = apply_highlight(q, a)
-                st.markdown(
-                    f"<div style='font-size: 0.9em; padding: 8px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'><strong>表示プレビュー:</strong> <br/> {preview_q}</div>",
-                    unsafe_allow_html=True,
-                )
             st.markdown("---")
 
         if st.form_submit_button("💾 デッキに保存", type="primary"):

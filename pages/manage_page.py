@@ -7,7 +7,12 @@ from __future__ import annotations
 import streamlit as st
 
 from config import CARD_TYPES, CATEGORIES, RANKS
-from services.card_service import parse_blanks_from_text
+from services.card_service import (
+    contains_highlight_markers,
+    extract_highlight_keywords,
+    parse_blanks_from_text,
+    validate_highlight_markers,
+)
 from storage import (
     delete_card,
     delete_cards_batch,
@@ -187,14 +192,17 @@ def _render_source_card_expander(
                 any_card_modified = True
                 changed_items.append(f"カード{j + 1}の問題")
 
-            new_a = st.session_state.get(f"a_{card['id']}")
             if c_type in ("知識", "類型"):
-                if new_a is not None and new_a != card.get(
-                    "highlighted_keywords", card.get("answer", "")
-                ):
+                new_highlights = _highlight_keywords_for_save(
+                    new_q or card["question"],
+                    card["question"],
+                    card.get("highlighted_keywords", ""),
+                )
+                if new_highlights != card.get("highlighted_keywords", ""):
                     any_card_modified = True
-                    changed_items.append(f"カード{j + 1}のハイライト語")
+                    changed_items.append(f"カード{j + 1}のハイライト指定")
             else:
+                new_a = st.session_state.get(f"a_{card['id']}")
                 if new_a is not None and new_a != card["answer"]:
                     any_card_modified = True
                     changed_items.append(f"カード{j + 1}の答え")
@@ -339,18 +347,24 @@ def _render_source_card_expander(
 
 def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> None:
     """紐づきカードの1行を表示"""
-    col1, col2, col3, col4 = st.columns([4, 4, 2, 1])
-    with col1:
-        st.text_area(f"問題 {index + 1}", value=card["question"], key=f"q_{card['id']}")
-    with col2:
-        current_card_type = card.get("card_type", sc.get("card_type"))
-        if current_card_type in ("知識", "類型"):
-            a_label = f"ハイライト語 {index + 1}"
-            val_a = card.get("highlighted_keywords", card.get("answer", ""))
-        else:
-            a_label = f"答え {index + 1}"
-            val_a = card["answer"]
-        st.text_area(a_label, value=val_a, key=f"a_{card['id']}")
+    current_card_type = card.get("card_type", sc.get("card_type"))
+    if current_card_type in ("知識", "類型"):
+        col1, col3, col4 = st.columns([8, 2, 1])
+        with col1:
+            st.text_area(
+                f"本文 {index + 1}（ハイライト箇所は【】で囲む）",
+                value=card["question"],
+                key=f"q_{card['id']}",
+            )
+    else:
+        col1, col2, col3, col4 = st.columns([4, 4, 2, 1])
+        with col1:
+            st.text_area(
+                f"問題 {index + 1}", value=card["question"], key=f"q_{card['id']}"
+            )
+        with col2:
+            st.text_area(f"答え {index + 1}", value=card["answer"], key=f"a_{card['id']}")
+
     with col3:
         current_rank = card.get("rank", "B")
         r_idx = RANKS.index(current_rank) if current_rank in RANKS else 3
@@ -361,6 +375,17 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
             delete_card(user_id, card["id"])
             st.success("カードを削除しました")
             st.rerun()
+
+
+def _highlight_keywords_for_save(
+    new_text: str, previous_text: str, previous_keywords: str
+) -> str:
+    """旧方式カードは本文に【】がない限り既存ハイライト語を保持する。"""
+    if contains_highlight_markers(new_text):
+        return extract_highlight_keywords(new_text)
+    if contains_highlight_markers(previous_text):
+        return ""
+    return previous_keywords
 
 
 def _save_source_and_cards(
@@ -377,6 +402,14 @@ def _save_source_and_cards(
     changed_items: list[str],
 ) -> None:
     """原文カードと紐づき暗記カードを保存"""
+    if new_type in ("知識", "類型"):
+        source_is_valid, source_message, _count = validate_highlight_markers(
+            edited_source
+        )
+        if not source_is_valid:
+            st.warning(f"原文: {source_message}")
+            return
+
     if source_modified or type_modified or cat_modified:
         update_source_card(
             user_id,
@@ -393,18 +426,23 @@ def _save_source_and_cards(
             new_type if type_modified else card.get("card_type", sc.get("card_type"))
         )
 
-        if c_type in ("知識", "類型"):
-            fallback_a = card.get("highlighted_keywords", card.get("answer", ""))
-        else:
-            fallback_a = card["answer"]
-        new_a = st.session_state.get(f"a_{card['id']}", fallback_a)
         new_r = st.session_state.get(f"r_{card['id']}", card.get("rank", "B"))
 
-        ans_to_save = new_a
-        hl_to_save = card.get("highlighted_keywords", "")
         if c_type in ("知識", "類型"):
-            hl_to_save = new_a
+            card_is_valid, card_message, _count = validate_highlight_markers(new_q)
+            if not card_is_valid:
+                st.warning(f"{card.get('title', 'カード')}: {card_message}")
+                return
             ans_to_save = ""
+            hl_to_save = _highlight_keywords_for_save(
+                new_q,
+                card["question"],
+                card.get("highlighted_keywords", ""),
+            )
+        else:
+            new_a = st.session_state.get(f"a_{card['id']}", card["answer"])
+            ans_to_save = new_a
+            hl_to_save = card.get("highlighted_keywords", "")
 
         if (
             new_q != card["question"]
@@ -438,8 +476,13 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
     """原文なしの孤立カードを表示"""
     with st.expander(f"🎴 {card.get('title', '無題')}: {card['question'][:30]}..."):
         with st.form(key=f"orphan_form_{card['id']}"):
-            new_q = st.text_input("問題", value=card["question"])
-            new_a = st.text_input("答え", value=card["answer"])
+            current_type_orphan = card.get("card_type")
+            q_label = (
+                "本文（ハイライト箇所は【】で囲む）"
+                if current_type_orphan in ("知識", "類型")
+                else "問題"
+            )
+            new_q = st.text_area(q_label, value=card["question"])
 
             col_cat, col_type = st.columns(2)
             with col_cat:
@@ -449,7 +492,6 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     index=CATEGORIES.index(card.get("category", "その他")),
                 )
             with col_type:
-                current_type_orphan = card.get("card_type")
                 type_idx = (
                     CARD_TYPES.index(current_type_orphan)
                     if current_type_orphan in CARD_TYPES
@@ -462,7 +504,24 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     key=f"orphan_type_{card['id']}",
                 )
 
+            if new_type_orphan in ("知識", "類型"):
+                st.caption("ハイライトしたい箇所を本文中の【】で囲んでください。")
+                new_a = ""
+            else:
+                new_a = st.text_input("答え", value=card["answer"])
+
             if st.form_submit_button("✓ 更新"):
+                highlighted_keywords = None
+                if new_type_orphan in ("知識", "類型"):
+                    is_valid, message, _count = validate_highlight_markers(new_q)
+                    if not is_valid:
+                        st.warning(message)
+                        return
+                    highlighted_keywords = _highlight_keywords_for_save(
+                        new_q,
+                        card["question"],
+                        card.get("highlighted_keywords", ""),
+                    )
                 update_card_content(
                     user_id,
                     card["id"],
@@ -471,6 +530,7 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     card.get("title", ""),
                     new_cat,
                     card_type=new_type_orphan,
+                    highlighted_keywords=highlighted_keywords,
                 )
                 st.success("更新しました")
                 st.rerun()

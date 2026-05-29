@@ -177,7 +177,11 @@ def _render_source_review(
         if current_source.get("title")
         else ""
     )
-    source_text = escape_html(current_source.get("source_text", ""))
+    source_text_raw = current_source.get("source_text", "")
+    if current_source.get("card_type") in ("知識", "類型"):
+        source_text = apply_highlight(source_text_raw, "")
+    else:
+        source_text = escape_html(source_text_raw)
     st.markdown(
         f"""
 <div class="flashcard flashcard-bg-{category}">

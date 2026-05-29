@@ -5,7 +5,12 @@
 import datetime
 import unittest
 
-from services.card_service import apply_highlight, generate_cards_from_selection
+from services.card_service import (
+    apply_highlight,
+    extract_highlight_keywords,
+    generate_cards_from_selection,
+    validate_highlight_markers,
+)
 from services.review_service import (
     calculate_next_review,
     get_initial_card_state,
@@ -230,6 +235,32 @@ class TestHtmlSafety(unittest.TestCase):
         self.assertIn("&lt;/b&gt;", result)
         self.assertIn(">民法</span>", result)
         self.assertNotIn("<b>", result)
+
+    def test_apply_highlight_uses_markers_exact_position(self) -> None:
+        result = apply_highlight("A【B】B", "")
+        self.assertIn("A", result)
+        self.assertEqual(result.count(">B</span>"), 1)
+        self.assertTrue(result.endswith("B"))
+        self.assertNotIn("【", result)
+        self.assertNotIn("】", result)
+
+    def test_apply_highlight_escapes_html_inside_markers(self) -> None:
+        result = apply_highlight("【<script>】", "")
+        self.assertIn("&lt;script&gt;", result)
+        self.assertIn("</span>", result)
+        self.assertNotIn("<script>", result)
+
+    def test_extract_highlight_keywords_from_markers(self) -> None:
+        self.assertEqual(
+            extract_highlight_keywords("民法【709条】は【不法行為】を定める。"),
+            "709条 不法行為",
+        )
+
+    def test_validate_highlight_markers_rejects_unclosed_marker(self) -> None:
+        is_valid, message, count = validate_highlight_markers("民法【709条")
+        self.assertFalse(is_valid)
+        self.assertIn("】", message)
+        self.assertEqual(count, 0)
 
 
 def _make_review_card(
