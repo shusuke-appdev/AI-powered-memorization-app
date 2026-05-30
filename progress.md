@@ -4,6 +4,11 @@
 
 ## 完了済み
 
+### カード管理画面の共通タイトル編集対応（2026-05-30）
+- **UI**: カード管理画面の原文カード編集に「タイトル」欄を追加。保存時は原文カードと紐づく暗記カードへ同じ共通タイトルを反映し、再生成上書きでも編集後タイトルを使う。
+- **孤立カード**: 原文なし暗記カードでもタイトルを編集でき、タイトル検索にも対応。
+- **検証**: `ruff format --check pages\manage_page.py`, `ruff check pages\manage_page.py`, `pytest tests -p no:cacheprovider -q` は成功。`scripts/check.py` は lint/test は成功したが、未編集の `pages\add_card_page.py`, `pages\review_page.py`, `services\card_service.py`, `tests\test_logic.py` の既存format差分で format check のみ失敗。
+
 ### 知識・類型カードの【】ハイライト指定化（2026-05-30）
 - **仕様変更**: 知識・類型カードのハイライト指定を、別入力の「ハイライト語」から本文内の `【】` 指定へ変更。復習・プレビュー表示では `【】` を出さず、囲まれた箇所だけを赤下線で表示する。
 - **互換性**: DBスキーマは変更せず、`highlighted_keywords` は新規カードでは `【】` から抽出して保存。本文に `【】` がない旧方式カードは既存の `highlighted_keywords` フォールバックで表示を維持する。

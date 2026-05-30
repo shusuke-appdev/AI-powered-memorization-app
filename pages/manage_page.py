@@ -45,7 +45,9 @@ def render_manage_page(user_id: str) -> None:
     filter_col1, filter_col2 = st.columns([2, 1])
     with filter_col1:
         search_query = st.text_input(
-            "🔍 検索", placeholder="原文、問題、答えで検索...", key="unified_search"
+            "🔍 検索",
+            placeholder="タイトル、原文、問題、答えで検索...",
+            key="unified_search",
         )
     with filter_col2:
         types_filter = ["すべて"] + CARD_TYPES
@@ -107,6 +109,7 @@ def _render_category_tab(
             for c in orphan_cards
             if query_lower in c["question"].lower()
             or query_lower in c["answer"].lower()
+            or query_lower in c.get("title", "").lower()
         ]
 
     if not category_sources and not orphan_cards:
@@ -131,14 +134,19 @@ def _render_source_card_expander(
 ) -> None:
     """原文カードのExpanderを表示"""
     source_id = sc["id"]
-    source_title = sc.get("title", "無題")
+    source_title = sc.get("title", "")
+    display_title = source_title or "無題"
     source_text = sc.get("source_text", "")
 
     linked_cards = [c for c in cards if c.get("source_id") == source_id]
 
     with st.expander(
-        f"📄 {source_title}（暗記カード {len(linked_cards)} 枚）", expanded=False
+        f"📄 {display_title}（暗記カード {len(linked_cards)} 枚）", expanded=False
     ):
+        edited_title = st.text_input(
+            "タイトル", value=source_title, key=f"edit_title_{source_id}"
+        )
+
         # 原文表示・編集
         st.markdown("**📝 原文**")
         edited_source = st.text_area(
@@ -160,6 +168,7 @@ def _render_source_card_expander(
                 "カテゴリ", CATEGORIES, index=cat_index, key=f"edit_cat_{source_id}"
             )
 
+        title_modified = edited_title != source_title
         source_modified = edited_source != source_text
         type_modified = new_type != sc.get("card_type")
         cat_modified = new_category != category
@@ -174,6 +183,8 @@ def _render_source_card_expander(
         # 変更の検知
         any_card_modified = False
         changed_items = []
+        if title_modified:
+            changed_items.append("タイトル")
         if source_modified:
             changed_items.append("原文")
         if type_modified:
@@ -213,7 +224,11 @@ def _render_source_card_expander(
                 changed_items.append(f"カード{j + 1}のランク")
 
         has_changes = (
-            source_modified or type_modified or cat_modified or any_card_modified
+            title_modified
+            or source_modified
+            or type_modified
+            or cat_modified
+            or any_card_modified
         )
 
         # 操作ボタン
@@ -234,9 +249,11 @@ def _render_source_card_expander(
                     source_id,
                     sc,
                     linked_cards,
+                    edited_title,
                     edited_source,
                     new_type,
                     new_category,
+                    title_modified,
                     source_modified,
                     type_modified,
                     cat_modified,
@@ -318,7 +335,7 @@ def _render_source_card_expander(
                     {
                         "question": c["question"],
                         "answer": c["answer"],
-                        "title": source_title,
+                        "title": edited_title,
                         "category": new_category,
                         "blank_count": len(cards_to_save),
                         "card_type": new_type,
@@ -331,7 +348,7 @@ def _render_source_card_expander(
                     user_id,
                     source_id=source_id,
                     source_text=edited_source,
-                    title=source_title,
+                    title=edited_title,
                     category=new_category,
                     card_type=new_type,
                     old_card_ids=[lc["id"] for lc in linked_cards],
@@ -363,7 +380,9 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
                 f"問題 {index + 1}", value=card["question"], key=f"q_{card['id']}"
             )
         with col2:
-            st.text_area(f"答え {index + 1}", value=card["answer"], key=f"a_{card['id']}")
+            st.text_area(
+                f"答え {index + 1}", value=card["answer"], key=f"a_{card['id']}"
+            )
 
     with col3:
         current_rank = card.get("rank", "B")
@@ -393,9 +412,11 @@ def _save_source_and_cards(
     source_id: str,
     sc: dict,
     linked_cards: list[dict],
+    new_title: str,
     edited_source: str,
     new_type: str,
     new_category: str,
+    title_modified: bool,
     source_modified: bool,
     type_modified: bool,
     cat_modified: bool,
@@ -410,11 +431,12 @@ def _save_source_and_cards(
             st.warning(f"原文: {source_message}")
             return
 
-    if source_modified or type_modified or cat_modified:
+    if title_modified or source_modified or type_modified or cat_modified:
         update_source_card(
             user_id,
             source_id,
             source_text=edited_source if source_modified else None,
+            title=new_title if title_modified else None,
             category=new_category if cat_modified else None,
             card_type=new_type if type_modified else None,
         )
@@ -449,6 +471,7 @@ def _save_source_and_cards(
             or ans_to_save != card["answer"]
             or hl_to_save != card.get("highlighted_keywords", "")
             or new_r != card.get("rank", "B")
+            or title_modified
             or type_modified
             or cat_modified
         ):
@@ -457,7 +480,7 @@ def _save_source_and_cards(
                 card["id"],
                 new_q,
                 ans_to_save,
-                card.get("title", ""),
+                new_title,
                 new_category,
                 new_type,
                 rank=new_r,
@@ -474,8 +497,13 @@ def _save_source_and_cards(
 
 def _render_orphan_card(user_id: str, card: dict) -> None:
     """原文なしの孤立カードを表示"""
-    with st.expander(f"🎴 {card.get('title', '無題')}: {card['question'][:30]}..."):
+    card_title = card.get("title", "")
+    display_title = card_title or "無題"
+    with st.expander(f"🎴 {display_title}: {card['question'][:30]}..."):
         with st.form(key=f"orphan_form_{card['id']}"):
+            new_title = st.text_input(
+                "タイトル", value=card_title, key=f"orphan_title_{card['id']}"
+            )
             current_type_orphan = card.get("card_type")
             q_label = (
                 "本文（ハイライト箇所は【】で囲む）"
@@ -527,7 +555,7 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     card["id"],
                     new_q,
                     new_a,
-                    card.get("title", ""),
+                    new_title,
                     new_cat,
                     card_type=new_type_orphan,
                     highlighted_keywords=highlighted_keywords,
