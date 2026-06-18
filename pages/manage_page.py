@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import unicodedata
+from typing import Any
+
 import streamlit as st
 
-from config import CARD_TYPES, CATEGORIES, RANKS
+from config import CARD_TYPES, CATEGORIES, RANK_WEIGHT, RANKS
 from services.card_service import (
     contains_highlight_markers,
     extract_highlight_keywords,
@@ -25,6 +28,14 @@ from storage import (
 )
 from use_cases.card_workflows import replace_source_cards
 
+MANAGE_SORT_OPTIONS = [
+    "50音順",
+    "お気に入り優先",
+    "重要度順",
+    "復習日が近い順",
+]
+_EMPTY_REVIEW_DATE = "9999-99-99"
+
 
 def render_manage_page(user_id: str) -> None:
     """カード管理タブを表示"""
@@ -32,6 +43,7 @@ def render_manage_page(user_id: str) -> None:
 
     cards = load_cards(user_id)
     source_cards = load_source_cards(user_id)
+    cards_by_source_id = _group_cards_by_source_id(cards)
 
     if not source_cards and not cards:
         st.info(
@@ -42,7 +54,7 @@ def render_manage_page(user_id: str) -> None:
     st.markdown(f"**原文カード: {len(source_cards)} 件 / 暗記カード: {len(cards)} 枚**")
 
     # フィルタ
-    filter_col1, filter_col2 = st.columns([2, 1])
+    filter_col1, filter_col2, filter_col3 = st.columns([2, 1, 1])
     with filter_col1:
         search_query = st.text_input(
             "🔍 検索",
@@ -53,6 +65,12 @@ def render_manage_page(user_id: str) -> None:
         types_filter = ["すべて"] + CARD_TYPES
         selected_type_filter = st.selectbox(
             "タイプ絞り込み", types_filter, key="manage_type_filter"
+        )
+    with filter_col3:
+        selected_sort_order = st.selectbox(
+            "並び順",
+            MANAGE_SORT_OPTIONS,
+            key="manage_sort_order",
         )
 
     # カテゴリタブ
@@ -65,8 +83,10 @@ def render_manage_page(user_id: str) -> None:
                 category,
                 cards,
                 source_cards,
+                cards_by_source_id,
                 search_query,
                 selected_type_filter,
+                selected_sort_order,
             )
 
 
@@ -75,8 +95,10 @@ def _render_category_tab(
     category: str,
     cards: list[dict],
     source_cards: list[dict],
+    cards_by_source_id: dict[str, list[dict]],
     search_query: str,
     selected_type_filter: str,
+    selected_sort_order: str,
 ) -> None:
     """カテゴリタブの内容を表示"""
     category_sources = [
@@ -85,7 +107,7 @@ def _render_category_tab(
 
     if selected_type_filter != "すべて":
         category_sources = [
-            s for s in category_sources if s.get("card_type") == selected_type_filter
+            s for s in category_sources if _matches_type_filter(s, selected_type_filter)
         ]
 
     if search_query:
@@ -102,13 +124,19 @@ def _render_category_tab(
         for c in cards
         if c.get("category", "その他") == category and not c.get("source_id")
     ]
+
+    if selected_type_filter != "すべて":
+        orphan_cards = [
+            c for c in orphan_cards if _matches_type_filter(c, selected_type_filter)
+        ]
+
     if search_query:
         query_lower = search_query.lower()
         orphan_cards = [
             c
             for c in orphan_cards
-            if query_lower in c["question"].lower()
-            or query_lower in c["answer"].lower()
+            if query_lower in c.get("question", "").lower()
+            or query_lower in c.get("answer", "").lower()
             or query_lower in c.get("title", "").lower()
         ]
 
@@ -116,8 +144,16 @@ def _render_category_tab(
         st.info(f"{category} のカードはありません。")
         return
 
+    category_sources = _sort_source_cards(
+        category_sources,
+        cards_by_source_id,
+        selected_sort_order,
+    )
+    orphan_cards = _sort_orphan_cards(orphan_cards, selected_sort_order)
+
     for sc in category_sources:
-        _render_source_card_expander(user_id, sc, cards, category)
+        linked_cards = cards_by_source_id.get(str(sc["id"]), [])
+        _render_source_card_expander(user_id, sc, linked_cards, category)
 
     if orphan_cards:
         st.markdown("---")
@@ -129,7 +165,7 @@ def _render_category_tab(
 def _render_source_card_expander(
     user_id: str,
     sc: dict,
-    cards: list[dict],
+    linked_cards: list[dict],
     category: str,
 ) -> None:
     """原文カードのExpanderを表示"""
@@ -137,8 +173,6 @@ def _render_source_card_expander(
     source_title = sc.get("title", "")
     display_title = source_title or "無題"
     source_text = sc.get("source_text", "")
-
-    linked_cards = [c for c in cards if c.get("source_id") == source_id]
 
     with st.expander(
         f"📄 {display_title}（暗記カード {len(linked_cards)} 枚）", expanded=False
@@ -567,3 +601,120 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
             delete_card(user_id, card["id"])
             st.success("削除しました")
             st.rerun()
+
+
+def _group_cards_by_source_id(cards: list[dict]) -> dict[str, list[dict]]:
+    """原文カードIDごとに紐づき暗記カードをまとめる。"""
+    grouped: dict[str, list[dict]] = {}
+    for card in cards:
+        source_id = card.get("source_id")
+        if source_id:
+            grouped.setdefault(str(source_id), []).append(card)
+    return grouped
+
+
+def _sort_source_cards(
+    source_cards: list[dict],
+    cards_by_source_id: dict[str, list[dict]],
+    sort_order: str,
+) -> list[dict]:
+    """管理画面用に原文カードを並び替える。"""
+    return sorted(
+        source_cards,
+        key=lambda source_card: _source_card_sort_key(
+            source_card,
+            cards_by_source_id.get(str(source_card["id"]), []),
+            sort_order,
+        ),
+    )
+
+
+def _sort_orphan_cards(orphan_cards: list[dict], sort_order: str) -> list[dict]:
+    """管理画面用に原文なし暗記カードを並び替える。"""
+    return sorted(
+        orphan_cards,
+        key=lambda card: _orphan_card_sort_key(card, sort_order),
+    )
+
+
+def _matches_type_filter(item: dict[str, Any], selected_type_filter: str) -> bool:
+    if selected_type_filter == "すべて":
+        return True
+    return item.get("card_type") == selected_type_filter
+
+
+def _source_card_sort_key(
+    source_card: dict[str, Any],
+    linked_cards: list[dict],
+    sort_order: str,
+) -> tuple[Any, ...]:
+    display_key = _display_sort_key(
+        source_card.get("title") or source_card.get("source_text")
+    )
+
+    if sort_order == "お気に入り優先":
+        is_favorite = any(card.get("is_favorite", False) for card in linked_cards)
+        return (not is_favorite, *display_key)
+
+    if sort_order == "重要度順":
+        return (-_max_rank_weight(linked_cards), *display_key)
+
+    if sort_order == "復習日が近い順":
+        return (_earliest_review_date(linked_cards), *display_key)
+
+    return display_key
+
+
+def _orphan_card_sort_key(card: dict[str, Any], sort_order: str) -> tuple[Any, ...]:
+    display_key = _display_sort_key(card.get("title") or card.get("question"))
+
+    if sort_order == "お気に入り優先":
+        return (not card.get("is_favorite", False), *display_key)
+
+    if sort_order == "重要度順":
+        return (-_rank_weight(card), *display_key)
+
+    if sort_order == "復習日が近い順":
+        return (_review_date_key(card), *display_key)
+
+    return display_key
+
+
+def _display_sort_key(value: Any) -> tuple[bool, str, str]:
+    normalized = _normalize_display_sort_text(value)
+    return (not bool(normalized), normalized, str(value or ""))
+
+
+def _normalize_display_sort_text(value: Any) -> str:
+    """50音順に近い表示名キーを作る。漢字の読み推定はしない。"""
+    text = unicodedata.normalize("NFKC", str(value or "")).strip().lower()
+    text = " ".join(text.split())
+    return "".join(_katakana_to_hiragana(char) for char in text)
+
+
+def _katakana_to_hiragana(char: str) -> str:
+    code_point = ord(char)
+    if 0x30A1 <= code_point <= 0x30F6:
+        return chr(code_point - 0x60)
+    return char
+
+
+def _max_rank_weight(cards: list[dict]) -> int:
+    if not cards:
+        return 0
+    return max(_rank_weight(card) for card in cards)
+
+
+def _rank_weight(card: dict[str, Any]) -> int:
+    return RANK_WEIGHT.get(str(card.get("rank", "")), 0)
+
+
+def _earliest_review_date(cards: list[dict]) -> str:
+    if not cards:
+        return _EMPTY_REVIEW_DATE
+    return min(_review_date_key(card) for card in cards)
+
+
+def _review_date_key(card: dict[str, Any]) -> str:
+    next_review = str(card.get("next_review") or "")[:10]
+    return next_review or _EMPTY_REVIEW_DATE
