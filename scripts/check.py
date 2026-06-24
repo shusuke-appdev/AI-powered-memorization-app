@@ -39,19 +39,48 @@ def main() -> None:
         print("Tools not found. Run: python -m pip install -r requirements.txt")
         sys.exit(1)
 
-    # 1. Format check (Ruff)
+    # 1. Dependency consistency
+    dependency_success = run_command(
+        [sys.executable, "-m", "pip", "check"],
+        "Checking dependency consistency",
+    )
+
+    # 2. Compile
+    compile_success = run_command(
+        [
+            sys.executable,
+            "-m",
+            "compileall",
+            "-q",
+            "app.py",
+            "auth.py",
+            "components.py",
+            "config.py",
+            "database.py",
+            "export_import.py",
+            "stats.py",
+            "storage.py",
+            "pages",
+            "services",
+            "use_cases",
+            "tests",
+        ],
+        "Compiling Python sources",
+    )
+
+    # 3. Format check (Ruff)
     format_success = run_command(
         [sys.executable, "-m", "ruff", "format", "--check", "."],
         "Checking code format",
     )
 
-    # 2. Lint (Ruff)
+    # 4. Lint (Ruff)
     lint_success = run_command(
         [sys.executable, "-m", "ruff", "check", "."],
         "Linting code",
     )
 
-    # 3. Test (Pytest)
+    # 5. Test (Pytest)
     if os.path.isdir("tests"):
         test_success = run_command(
             [sys.executable, "-m", "pytest", "tests", "-p", "no:cacheprovider", "-q"],
@@ -61,7 +90,15 @@ def main() -> None:
         print("INFO: 'tests' directory not found. Skipping tests.")
         test_success = True
 
-    if not format_success or not lint_success or not test_success:
+    if not all(
+        (
+            dependency_success,
+            compile_success,
+            format_success,
+            lint_success,
+            test_success,
+        )
+    ):
         print("\nChecks completed with issues.")
         sys.exit(1)
     else:

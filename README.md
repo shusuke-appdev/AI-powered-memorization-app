@@ -31,7 +31,7 @@
 ## セットアップ
 
 ```powershell
-pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 
 $env:SUPABASE_URL = "https://xxx.supabase.co"
 $env:SUPABASE_KEY = "eyJ..."

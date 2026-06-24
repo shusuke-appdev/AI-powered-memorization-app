@@ -9,7 +9,7 @@
 ## ローカル起動
 
 ```powershell
-pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 
 $env:SUPABASE_URL = "https://xxx.supabase.co"
 $env:SUPABASE_KEY = "eyJ..."
@@ -78,8 +78,8 @@ pytest tests -p no:cacheprovider -q
 検証環境を再作成する場合は、新しい仮想環境を作って依存関係を入れ直してください。
 
 ```powershell
-py -3.10 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt
 .\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest tests -p no:cacheprovider -q

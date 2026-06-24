@@ -5,6 +5,7 @@ Supabase データベース接続モジュール
 from __future__ import annotations
 
 import os
+import socket
 import time
 from typing import Any
 
@@ -17,6 +18,26 @@ class DatabaseConnectionError(Exception):
     def __init__(self, message: str = "データベースに接続できません") -> None:
         self.message = message
         super().__init__(self.message)
+
+
+def as_database_connection_error(
+    error: BaseException,
+) -> DatabaseConnectionError | None:
+    """DNS解決失敗を利用者向けのデータベース接続エラーへ変換する。"""
+    current: BaseException | None = error
+    seen: set[int] = set()
+
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, socket.gaierror):
+            return DatabaseConnectionError(
+                "データベースの接続先を確認できません。"
+                "Supabaseプロジェクトが停止している可能性があります。"
+                "しばらく待ってから再試行してください。"
+            )
+        current = current.__cause__ or current.__context__
+
+    return None
 
 
 # リトライ設定

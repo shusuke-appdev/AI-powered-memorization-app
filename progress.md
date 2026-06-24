@@ -1,8 +1,20 @@
 # Progress — AI暗記カードアプリ
 
-## 最終更新: 2026-06-18
+## 最終更新: 2026-06-25
 
 ## 完了済み
+
+### Supabase停止復旧とDNSエラー表示改善（2026-06-25）
+- **障害原因**: FreeプランのSupabaseプロジェクトが `INACTIVE` になり、プロジェクト固有ホストをDNS解決できなくなっていた。プロジェクトを復元し、`ACTIVE_HEALTHY` とDNS応答を確認。
+- **エラー表示**: DBクエリ時の例外チェーンから `socket.gaierror` を検出し、「Supabaseプロジェクトが停止している可能性があります」と案内する接続エラーへ変換。無関係な例外は従来の汎用表示を維持。
+- **検証**: `scripts/check.py` の依存整合性、compileall、Ruff format/lint、pytest（41件）は全成功。`scripts/live_smoke.py` でログイン、セッション、カード、原文、復習進捗、日次割当、削除を確認し、StreamlitのローカルHTTP 200も確認。
+
+### 開発環境・検証基盤のPython 3.12統一（2026-06-24）
+- **依存再現性**: 検証済み直接依存を `constraints.txt` に固定し、ローカル・CI・devcontainerのインストールを同じ制約付きコマンドへ統一。
+- **実行環境**: 文書とdevcontainerをPython 3.12へ揃え、参照されていないgit管理外の旧 `venv/`（Python 3.13.9）を削除して `.venv`（Python 3.12.10）へ一本化。
+- **Windows/Codex安定性**: pytestとRuffのtemp/cacheを `.states/` 配下へ固定し、検証スクリプトへ依存整合性確認とcompileallを追加。
+- **基準線**: 既存format checkで不合格だった4ファイルをRuffで機械整形し、挙動変更なしでCI基準線を正常化。
+- **検証**: 現行 `.venv` とconstraintsから新規作成した使い捨てPython 3.12環境の両方で、pip check、compileall、Ruff format/lint、pytest（38件）に成功。Streamlit headless起動もHTTP 200を確認。
 
 ### カード管理画面の並び順改善（2026-06-18）
 - **UI**: カード管理画面の検索/タイプ絞り込み行に「並び順」を追加し、初期値を「50音順」にした。選択肢は「50音順」「お気に入り優先」「重要度順」「復習日が近い順」。

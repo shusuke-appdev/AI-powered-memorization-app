@@ -11,7 +11,11 @@ import streamlit as st
 from streamlit_cookies_controller import CookieController
 
 from auth import get_username, validate_session_token
-from database import DatabaseConnectionError
+from database import (
+    DatabaseConnectionError,
+    as_database_connection_error,
+    reset_connection,
+)
 from pages.add_card_page import render_add_card_page
 from pages.listen_page import render_listen_page
 from pages.login_page import show_login_page
@@ -88,6 +92,17 @@ def show_main_app() -> None:
         render_stats_page(user_id)
 
 
+def show_database_error(error: DatabaseConnectionError) -> None:
+    """データベース接続エラーと再読み込み操作を表示する。"""
+    st.error(f"⚠️ {error.message}")
+    st.info(
+        "🔄 ページを再読み込みしてください。問題が続く場合は、しばらく待ってから再試行してください。"
+    )
+    if st.button("再読み込み"):
+        reset_connection()
+        st.rerun()
+
+
 # ============ アプリケーション実行 ============
 
 try:
@@ -96,17 +111,13 @@ try:
     else:
         show_login_page(cookie_controller)
 except DatabaseConnectionError as e:
-    st.error(f"⚠️ {e.message}")
-    st.info(
-        "🔄 ページを再読み込みしてください。問題が続く場合は、しばらく待ってから再試行してください。"
-    )
-    if st.button("再読み込み"):
-        from database import reset_connection
-
-        reset_connection()
-        st.rerun()
+    show_database_error(e)
 except Exception as e:
-    st.error(f"予期しないエラーが発生しました: {e}")
-    st.info("🔄 ページを再読み込みするか、サポートにお問い合わせください。")
-    if st.button("再読み込み"):
-        st.rerun()
+    database_error = as_database_connection_error(e)
+    if database_error is not None:
+        show_database_error(database_error)
+    else:
+        st.error(f"予期しないエラーが発生しました: {e}")
+        st.info("🔄 ページを再読み込みするか、サポートにお問い合わせください。")
+        if st.button("再読み込み"):
+            st.rerun()

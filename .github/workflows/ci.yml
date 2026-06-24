@@ -16,9 +16,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt -c constraints.txt
+
+      - name: Dependency consistency
+        run: python -m pip check
+
+      - name: Compile
+        run: python -m compileall app.py auth.py components.py config.py database.py export_import.py stats.py storage.py pages services use_cases tests
 
       - name: Ruff format check
         run: python -m ruff format --check .
