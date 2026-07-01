@@ -15,6 +15,7 @@ from database import get_supabase
 
 SESSION_EXPIRY_DAYS: int = 30
 DEFAULT_DAILY_QUOTA: int = 15
+MAINTENANCE_USERNAME: str = "codex-maintenance"
 
 
 def _generate_session_token() -> str:
@@ -71,11 +72,45 @@ def register_user(
 # ============ ユーザー情報取得 ============
 
 
-def get_all_users() -> list[dict[str, Any]]:
-    """登録されているすべてのユーザー（id, username）を取得"""
+def get_all_users(*, include_maintenance: bool = False) -> list[dict[str, Any]]:
+    """登録されているユーザー（id, username）を取得"""
     supabase = get_supabase()
     result = supabase.table("users").select("id, username").execute()
-    return result.data if result.data else []
+    users = result.data if result.data else []
+    if include_maintenance:
+        return users
+    return [
+        user
+        for user in users
+        if str(user.get("username", "")).casefold() != MAINTENANCE_USERNAME.casefold()
+    ]
+
+
+def get_or_create_maintenance_user() -> dict[str, Any]:
+    """AI/Codex整備用の固定ユーザーを取得し、なければ作成する。"""
+    supabase = get_supabase()
+    existing = (
+        supabase.table("users")
+        .select("id, username")
+        .ilike("username", MAINTENANCE_USERNAME)
+        .execute()
+    )
+    if existing.data:
+        return existing.data[0]
+
+    result = (
+        supabase.table("users")
+        .insert(
+            {
+                "username": MAINTENANCE_USERNAME,
+                "password_hash": f"password_disabled_{uuid.uuid4().hex}",
+            }
+        )
+        .execute()
+    )
+    if not result.data:
+        raise RuntimeError("整備用ユーザーを作成できませんでした。")
+    return result.data[0]
 
 
 def login_user_direct(user_id: str) -> tuple[bool, str, str | None]:

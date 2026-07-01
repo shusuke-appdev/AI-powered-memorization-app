@@ -1,8 +1,14 @@
 # Progress — AI暗記カードアプリ
 
-## 最終更新: 2026-06-25
+## 最終更新: 2026-07-01
 
 ## 完了済み
+
+### カード管理ランク統合と整備用ユーザー整理（2026-07-01）
+- **ランク統合**: カード管理画面で、原文カード配下の暗記カードごとの個別ランク選択をやめ、原文カードと紐づく暗記カードを1つの「重要度ランク」で扱うようにした。既存データでランクが混在する場合は最高ランクを代表値として表示し、保存時に全紐づきカードへ同期する。
+- **再生成改善**: 原文を変更していない場合は「変更した原文からカードを再生成」を表示しないようにした。再生成カードは変更前グループのランクを引き継ぎ、保存ボタンは変更なしなら secondary 表示かつ非活性にした。
+- **整備用ユーザー**: ライブDB上の空ユーザー `test_user_2cdaa6d9` を `codex-maintenance` に改名し、空の `testuser` とそのセッションを削除した。`Andy Jones` はテストユーザーと断定しないため残した。今後の `scripts/live_smoke.py` は `codex-maintenance` を固定で使い、ログイン画面には表示しない。
+- **検証**: `pytest tests\test_auth.py tests\test_manage_page_sorting.py tests\test_card_workflows.py -q` は18件成功。`scripts/check.py` は依存整合性、compileall、Ruff format/lint、pytest（47件）すべて成功。`scripts/live_smoke.py` で `codex-maintenance` を使ったログイン、セッション、カード、原文、復習進捗、日次割当、削除を確認。Streamlitを一時起動し、`http://localhost:8502` のHTTP 200も確認。
 
 ### Supabase停止復旧とDNSエラー表示改善（2026-06-25）
 - **障害原因**: FreeプランのSupabaseプロジェクトが `INACTIVE` になり、プロジェクト固有ホストをDNS解決できなくなっていた。プロジェクトを復元し、`ACTIVE_HEALTHY` とDNS応答を確認。

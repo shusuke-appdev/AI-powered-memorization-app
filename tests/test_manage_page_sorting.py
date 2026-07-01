@@ -1,4 +1,5 @@
 from pages.manage_page import (
+    _group_rank,
     _matches_type_filter,
     _normalize_display_sort_text,
     _sort_orphan_cards,
@@ -71,6 +72,14 @@ def test_sort_source_cards_by_highest_linked_rank() -> None:
     sorted_cards = _sort_source_cards(source_cards, cards_by_source_id, "重要度順")
 
     assert [card["id"] for card in sorted_cards] == ["1", "2", "3"]
+
+
+def test_group_rank_uses_highest_linked_rank() -> None:
+    assert _group_rank([{"rank": "B"}, {"rank": "A+"}, {"rank": "C"}]) == "A+"
+
+
+def test_group_rank_defaults_to_b_when_no_linked_cards() -> None:
+    assert _group_rank([]) == "B"
 
 
 def test_sort_orphan_cards_by_rank() -> None:

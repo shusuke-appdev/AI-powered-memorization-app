@@ -187,7 +187,8 @@ def _render_source_card_expander(
             "", value=source_text, height=120, key=f"edit_source_{source_id}"
         )
 
-        meta_col1, meta_col2 = st.columns(2)
+        group_rank = _group_rank(linked_cards)
+        meta_col1, meta_col2, meta_col3 = st.columns(3)
         with meta_col1:
             current_type = sc.get("card_type")
             type_index = (
@@ -201,11 +202,21 @@ def _render_source_card_expander(
             new_category = st.selectbox(
                 "カテゴリ", CATEGORIES, index=cat_index, key=f"edit_cat_{source_id}"
             )
+        with meta_col3:
+            rank_index = RANKS.index(group_rank) if group_rank in RANKS else 3
+            new_rank = st.selectbox(
+                "重要度ランク",
+                RANKS,
+                index=rank_index,
+                key=f"edit_rank_{source_id}",
+                help="原文カードと紐づく暗記カードをまとめて同じランクにします。",
+            )
 
         title_modified = edited_title != source_title
         source_modified = edited_source != source_text
         type_modified = new_type != sc.get("card_type")
         cat_modified = new_category != category
+        rank_modified = any(card.get("rank", "B") != new_rank for card in linked_cards)
 
         # 紐づき暗記カード
         if linked_cards:
@@ -225,6 +236,8 @@ def _render_source_card_expander(
             changed_items.append("タイプ")
         if cat_modified:
             changed_items.append("カテゴリ")
+        if rank_modified:
+            changed_items.append("ランク")
 
         for j, card in enumerate(linked_cards):
             c_type = (
@@ -252,16 +265,12 @@ def _render_source_card_expander(
                     any_card_modified = True
                     changed_items.append(f"カード{j + 1}の答え")
 
-            new_r = st.session_state.get(f"r_{card['id']}")
-            if new_r is not None and new_r != card.get("rank", "B"):
-                any_card_modified = True
-                changed_items.append(f"カード{j + 1}のランク")
-
         has_changes = (
             title_modified
             or source_modified
             or type_modified
             or cat_modified
+            or rank_modified
             or any_card_modified
         )
 
@@ -274,7 +283,7 @@ def _render_source_card_expander(
             if st.button(
                 "💾 保存",
                 key=f"save_source_{source_id}",
-                type="primary",
+                type="primary" if has_changes else "secondary",
                 use_container_width=True,
                 disabled=not has_changes,
             ):
@@ -291,6 +300,7 @@ def _render_source_card_expander(
                     source_modified,
                     type_modified,
                     cat_modified,
+                    new_rank,
                     changed_items,
                 )
 
@@ -327,17 +337,28 @@ def _render_source_card_expander(
                     del st.session_state[f"confirm_del_all_{source_id}"]
                     st.rerun()
 
+        regen_key = f"regen_cards_{source_id}"
+        regen_context_key = f"regen_context_{source_id}"
+        regen_context = (edited_source, new_type)
+        if (
+            not source_modified
+            or st.session_state.get(regen_context_key) != regen_context
+        ) and regen_key in st.session_state:
+            st.session_state.pop(regen_key, None)
+            st.session_state.pop(regen_context_key, None)
+
         # 変更した原文からカードを再生成
-        if new_type not in ("知識", "類型"):
+        if source_modified and new_type not in ("知識", "類型"):
             st.markdown("---")
             if st.button("✨ 変更した原文からカードを再生成", key=f"regen_{source_id}"):
                 new_cards = parse_blanks_from_text(edited_source)
                 if new_cards:
-                    st.session_state[f"regen_cards_{source_id}"] = new_cards
+                    st.session_state[regen_key] = new_cards
+                    st.session_state[regen_context_key] = regen_context
                 else:
                     st.error("【】で穴埋め箇所を正しく指定してください。")
 
-        regen_cards = st.session_state.get(f"regen_cards_{source_id}")
+        regen_cards = st.session_state.get(regen_key)
         if regen_cards:
             st.markdown("### 🔄 再生成プレビュー")
             st.warning(
@@ -373,7 +394,7 @@ def _render_source_card_expander(
                         "category": new_category,
                         "blank_count": len(cards_to_save),
                         "card_type": new_type,
-                        "rank": "B",
+                        "rank": new_rank,
                     }
                     for c in cards_to_save
                     if c["question"] and c["answer"]
@@ -388,11 +409,13 @@ def _render_source_card_expander(
                     old_card_ids=[lc["id"] for lc in linked_cards],
                     cards=cards_payload,
                 )
-                del st.session_state[f"regen_cards_{source_id}"]
+                st.session_state.pop(regen_key, None)
+                st.session_state.pop(regen_context_key, None)
                 st.success("再生成したカードで上書き保存しました！")
                 st.rerun()
             if st.button("キャンセル", key=f"cancel_regen_{source_id}"):
-                del st.session_state[f"regen_cards_{source_id}"]
+                st.session_state.pop(regen_key, None)
+                st.session_state.pop(regen_context_key, None)
                 st.rerun()
 
 
@@ -400,7 +423,7 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
     """紐づきカードの1行を表示"""
     current_card_type = card.get("card_type", sc.get("card_type"))
     if current_card_type in ("知識", "類型"):
-        col1, col3, col4 = st.columns([8, 2, 1])
+        col1, delete_col = st.columns([9, 1])
         with col1:
             st.text_area(
                 f"本文 {index + 1}（ハイライト箇所は【】で囲む）",
@@ -408,7 +431,7 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
                 key=f"q_{card['id']}",
             )
     else:
-        col1, col2, col3, col4 = st.columns([4, 4, 2, 1])
+        col1, col2, delete_col = st.columns([4, 4, 1])
         with col1:
             st.text_area(
                 f"問題 {index + 1}", value=card["question"], key=f"q_{card['id']}"
@@ -418,11 +441,7 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
                 f"答え {index + 1}", value=card["answer"], key=f"a_{card['id']}"
             )
 
-    with col3:
-        current_rank = card.get("rank", "B")
-        r_idx = RANKS.index(current_rank) if current_rank in RANKS else 3
-        st.selectbox(f"ランク {index + 1}", RANKS, index=r_idx, key=f"r_{card['id']}")
-    with col4:
+    with delete_col:
         st.markdown("")
         if st.button("🗑️", key=f"del_single_{card['id']}", help="このカードのみ削除"):
             delete_card(user_id, card["id"])
@@ -454,6 +473,7 @@ def _save_source_and_cards(
     source_modified: bool,
     type_modified: bool,
     cat_modified: bool,
+    new_rank: str,
     changed_items: list[str],
 ) -> None:
     """原文カードと紐づき暗記カードを保存"""
@@ -482,8 +502,6 @@ def _save_source_and_cards(
             new_type if type_modified else card.get("card_type", sc.get("card_type"))
         )
 
-        new_r = st.session_state.get(f"r_{card['id']}", card.get("rank", "B"))
-
         if c_type in ("知識", "類型"):
             card_is_valid, card_message, _count = validate_highlight_markers(new_q)
             if not card_is_valid:
@@ -504,7 +522,7 @@ def _save_source_and_cards(
             new_q != card["question"]
             or ans_to_save != card["answer"]
             or hl_to_save != card.get("highlighted_keywords", "")
-            or new_r != card.get("rank", "B")
+            or new_rank != card.get("rank", "B")
             or title_modified
             or type_modified
             or cat_modified
@@ -517,7 +535,7 @@ def _save_source_and_cards(
                 new_title,
                 new_category,
                 new_type,
-                rank=new_r,
+                rank=new_rank,
                 highlighted_keywords=hl_to_save,
             )
             updated_count += 1
@@ -703,6 +721,16 @@ def _max_rank_weight(cards: list[dict]) -> int:
     if not cards:
         return 0
     return max(_rank_weight(card) for card in cards)
+
+
+def _group_rank(cards: list[dict]) -> str:
+    """紐づきカードの代表ランク。既存データが混在する場合は最高ランクを使う。"""
+    if not cards:
+        return "B"
+    return max(
+        (str(card.get("rank", "B")) for card in cards),
+        key=lambda rank: RANK_WEIGHT.get(rank, 0),
+    )
 
 
 def _rank_weight(card: dict[str, Any]) -> int:

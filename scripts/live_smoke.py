@@ -28,7 +28,13 @@ def _load_local_secrets() -> None:
 def main() -> None:
     """ログイン相当、カード作成、復習更新、日次割当、削除を確認する。"""
     _load_local_secrets()
-    from auth import create_session, delete_session, get_all_users, login_user_direct
+    from auth import (
+        MAINTENANCE_USERNAME,
+        create_session,
+        delete_session,
+        get_or_create_maintenance_user,
+        login_user_direct,
+    )
     from services.review_service import calculate_next_review
     from storage import (
         add_card,
@@ -43,11 +49,8 @@ def main() -> None:
         update_card_progress,
     )
 
-    users = get_all_users()
-    if not users:
-        raise RuntimeError("スモークテストに使えるユーザーがありません。")
-
-    user_id = users[0]["id"]
+    maintenance_user = get_or_create_maintenance_user()
+    user_id = maintenance_user["id"]
     success, message, login_user_id = login_user_direct(user_id)
     if not success or login_user_id != user_id:
         raise RuntimeError(f"ログイン相当の確認に失敗しました: {message}")
@@ -120,7 +123,7 @@ def main() -> None:
 
         print(
             "LIVE_SMOKE_OK: login/session/card/source/progress/"
-            "daily_assignment/delete path verified"
+            f"daily_assignment/delete path verified with {MAINTENANCE_USERNAME}"
         )
     finally:
         if card_id:
