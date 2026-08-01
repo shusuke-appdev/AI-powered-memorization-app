@@ -4,6 +4,18 @@
 
 ## 完了済み
 
+### Codexリポジトリ指示の追加（2026-07-28）
+- `AGENTS.md` を新設し、Streamlit/Python 3.12、Supabase秘密情報、読み取り専用ヘルスチェック、`codex-maintenance`、`daily_assignments`互換性、標準release gateだけをrepo固有ルールとして記録した。
+- グローバルな作業手順やWindows実行環境の詳細は重複させず、Codex global guidanceと専用Skillsへ委ねた。
+- 検証: Markdown差分の`git diff --check`に合格。実効指示の確認はCodex再起動後の新しいタスクで行う。
+
+### GitHub/Supabase運用ヘルスチェック追加（2026-07-04）
+- **GitHub Actions対策**: `Health Check` workflowを追加し、3日に1回と手動実行でGitHub CLI/APIとSupabase接続を読み取り専用で確認するようにした。`SUPABASE_URL` / `SUPABASE_KEY` はGitHub repository secretsから渡し、push/PRでは実行しない。
+- **Supabase停止対策**: `scripts/health_check.py` を追加し、secrets未設定、Supabase DNS失敗、Supabase読み取り失敗、GitHub CLI未導入/未認証/API失敗を分類して表示するようにした。secret値は出力しない。
+- **CI更新**: 既存CIの `actions/checkout` をv7、`actions/setup-python` をv6へ更新し、`compileall` 対象に `scripts` を追加した。`scripts/check.py` も同じく `scripts` を構文検証対象にした。
+- **運用文書**: `DEVELOPMENT.md` と `OPERATOR_ACTIONS.md` に、GitHub secrets設定、手動ヘルスチェック、失敗時の見方、Supabase Free Plan停止時の復元後確認を追記した。
+- **検証**: `pytest tests\test_health_check.py -q` は7件成功。`scripts/check.py` は依存整合性、compileall、Ruff format/lint、pytest（54件）すべて成功。`scripts/health_check.py` はローカルsecretsでSupabase DNS/読み取りとGitHub CLI/API確認に成功。`gh workflow run health.yml` はworkflow未pushのため未実行。
+
 ### カード管理ランク統合と整備用ユーザー整理（2026-07-01）
 - **ランク統合**: カード管理画面で、原文カード配下の暗記カードごとの個別ランク選択をやめ、原文カードと紐づく暗記カードを1つの「重要度ランク」で扱うようにした。既存データでランクが混在する場合は最高ランクを代表値として表示し、保存時に全紐づきカードへ同期する。
 - **再生成改善**: 原文を変更していない場合は「変更した原文からカードを再生成」を表示しないようにした。再生成カードは変更前グループのランクを引き継ぎ、保存ボタンは変更なしなら secondary 表示かつ非活性にした。

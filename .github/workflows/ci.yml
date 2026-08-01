@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -25,7 +25,7 @@ jobs:
         run: python -m pip check
 
       - name: Compile
-        run: python -m compileall app.py auth.py components.py config.py database.py export_import.py stats.py storage.py pages services use_cases tests
+        run: python -m compileall app.py auth.py components.py config.py database.py export_import.py stats.py storage.py pages services scripts use_cases tests
 
       - name: Ruff format check
         run: python -m ruff format --check .

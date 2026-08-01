@@ -62,6 +62,7 @@ def main() -> None:
             "storage.py",
             "pages",
             "services",
+            "scripts",
             "use_cases",
             "tests",
         ],

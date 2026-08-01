@@ -70,9 +70,15 @@ Supabase Data APIの運用ルール:
 通常は次を実行します。
 
 ```powershell
-ruff format --check .
-ruff check .
-pytest tests -p no:cacheprovider -q
+.\.venv\Scripts\python.exe scripts\check.py
+```
+
+GitHub CLI と Supabase の運用ヘルスチェックは次で実行できます。`SUPABASE_URL` /
+`SUPABASE_KEY` は環境変数または `.streamlit/secrets.toml` から読み込まれます。値は
+出力されません。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\health_check.py
 ```
 
 検証環境を再作成する場合は、新しい仮想環境を作って依存関係を入れ直してください。
@@ -114,3 +120,17 @@ py -3.12 -m venv .venv
 - Streamlit CloudのSecrets設定とSupabaseのキー権限を定期確認する。
 - Supabase DashboardのSecurity Advisorで、Data APIに公開されているテーブルとRLS警告を定期確認する。
 - `migration_daily_assignments.sql` と `migration_data_api_grants.sql` 実行後は、ログイン、カード追加、復習更新、統計表示、削除、同日再ログイン時のノルマ維持を本番相当データで1件ずつ確認する。ローカルSecretsがある環境では `python scripts/live_smoke.py` でサービス層の最小確認ができる。
+
+GitHub Actions の `Health Check` workflow は、3日に1回と手動実行時に
+`scripts/health_check.py` を実行します。
+
+- GitHub repository secrets に `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
+- `GH_TOKEN` は workflow 内で `${{ github.token }}` を使うため、手動設定しない。
+- workflow はpush/PRでは動かさず、外部PRへSupabase secretsを渡さない。
+- `SUPABASE_URL または SUPABASE_KEY が未設定` はGitHub secrets不足。
+- `DNS 解決できません` はSupabase Free Planのプロジェクト停止、URL誤り、または一時DNS障害を疑う。
+- `Supabase の読み取り確認に失敗` はキー権限、RLS/GRANT、テーブル到達性を確認する。
+- `GitHub CLI/API` の失敗はGitHub Actions runner、`github.token` 権限、またはGitHub側障害を切り分ける。
+
+Supabase Free Planでは低活動プロジェクトが停止されることがあります。定期ヘルスチェックは
+早期検知と軽減のためのbest-effortです。停止を保証付きで避ける必要がある場合は、有料Planを検討してください。

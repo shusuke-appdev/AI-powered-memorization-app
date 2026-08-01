@@ -5,6 +5,8 @@
 ## すぐ必要
 
 - [ ] Streamlit Cloud または実行環境で `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
+- [ ] GitHub repository secrets に `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
+- [ ] GitHub Actions の `Health Check` workflow を手動実行し、Supabase読み取りとGitHub CLI/API確認が通ることを確認する。
 - [ ] パスワード認証やGemini APIキーに関する古いSecretsが残っていれば削除する。
 - [ ] ログイン画面のユーザー一覧に、本番で使うユーザーだけが表示されるように整理する。
 - [x] Python実行環境で `ruff format --check .`、`ruff check .`、`pytest tests -p no:cacheprovider -q` を実行できる状態にする。
@@ -13,6 +15,7 @@
 
 - [x] 現在使っているローカル `SUPABASE_KEY` の権限が `service_role` であることを確認する。
 - [ ] Streamlit Cloudなど本番実行環境の `SUPABASE_KEY` がサーバー側だけで使われるservice role/secret系キーであり、ブラウザ、公開リポジトリ、ログ、画面共有に露出していないことを確認する。
+- [ ] `Health Check` workflow が `DNS 解決できません` で失敗した場合、Supabase Dashboardでプロジェクト状態を確認し、停止中なら復元して `ACTIVE_HEALTHY` 相当まで待ってから `scripts/live_smoke.py` を実行する。
 - [x] Supabase Dashboard相当のSecurity Advisorで、Data APIに公開されているテーブルとRLS警告を確認する。
 - [x] Supabase MCPで `migration_daily_assignments.sql` 相当を適用し、日次ノルマ割当テーブルを作成する。
 - [x] Supabase MCPで `migration_data_api_grants.sql` 相当を適用し、`users`, `sessions`, `cards`, `source_cards`, `daily_assignments` が現行のサーバー側キーで読み書きできることを確認する。
