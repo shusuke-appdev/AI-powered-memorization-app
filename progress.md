@@ -4,12 +4,15 @@
 
 ## 継続中
 
-### Supabase CLI基準化とFreeプラン用バックアップ（2026-08-01）
-- **完了**: Supabase CLI 2.111.0の対話ログインとproject `zozsikyinpasapuxjbtg` のlinkを完了。`migration fetch` 後、ローカル・リモート8件のmigration versionが完全一致することを `migration list --linked` で確認した。
-- **バックアップ方針**: 対象organizationはFreeプランのため、プラットフォーム管理の日次バックアップ一覧は提供対象外。既存のアプリ用論理バックアップに加え、公式CLI `db dump` でschema/dataを保存する方針とした。
-- **現在の停止点**: Docker Desktop 4.84.0はインストール済みだが、AMD Ryzen 7 5700Xの `VirtualizationFirmwareEnabled` がFalseで起動できない。MSI MAG B550 TOMAHAWKのBIOSで `SVM Mode` を有効化し、再起動後にWSL 2を導入して `db pull` / `db dump` を完了する。
+- なし
 
 ## 完了済み
+
+### Supabase CLI基準化とFreeプラン用バックアップ（2026-08-01）
+- **実行環境**: BIOSのSVM有効化後、Windows側で `VirtualizationFirmwareEnabled=True` を確認。WSL 2.7.11.0とDocker Desktop 4.84.0（Engine 29.6.2）を導入し、Supabase CLIが必要とするDocker実行環境を復旧した。
+- **CLI基準化**: Supabase CLI 2.111.0でproject `zozsikyinpasapuxjbtg` をlinkし、`migration fetch` 後にローカル・リモート8件のmigration versionが完全一致することを `migration list --linked` で再確認した。通常のmigration式 `db pull` は履歴開始前に作られた基礎テーブルをshadow DBで再現できず安全に停止したため、remote migration履歴を変更せず `db pull --declarative` を使用し、現行public schemaを `supabase/database/` へ取得した。
+- **バックアップ**: 対象organizationはFreeプランのためプラットフォーム管理の日次バックアップ一覧は提供対象外。公式CLI `db dump` で `.states/supabase_schema_20260801.sql`（29,056 bytes、SHA-256 `27935aa3812fd3235ca7792aad0fae10058acd4dd892c19563d5fd0e88660f6b`）、`.states/supabase_data_20260801.sql`（355,098 bytes、SHA-256 `a9bd382dd28c68ce5ddba8f3c41be9f4216dabf62128fe32dadcebc72a63e75f`）、`.states/supabase_roles_20260801.sql`（358 bytes、SHA-256 `4350a72b5ec109888e740c17f3eb4da2fcd95ab73af26499538ed0bf615db543`）を作成した。3ファイルはいずれも `.gitignore` の `.states/` 対象で、データダンプは機密情報を含み得るためローカル保管とする。
+- **検証**: `db pull --declarative` の再実行は警告なしで成功し、`db lint --linked --schema public --level warning` は `No schema errors found`。`scripts/check.py` は依存整合性、compileall、Ruff、pytest 76件がすべて成功し、`git diff --check` も成功した。
 
 ### 全コードレビュー是正とトランザクション境界の導入（2026-08-01）
 - **ユーザー分離**: ログアウトと別ユーザーへの切替前にユーザー依存のStreamlit状態を全消去し、原文取得を必ず所有者付きにした。ユーザー名の空白除去、長さ、予約名もDBアクセス前に検証する。

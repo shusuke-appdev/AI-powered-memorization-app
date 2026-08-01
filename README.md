@@ -68,6 +68,7 @@ tests/                     ロジックテスト
 scripts/live_smoke.py      Supabase接続のサービス層スモークテスト
 scripts/backup_user_data.py 秘密情報を除いた移行前論理バックアップ
 supabase/migrations/       Supabase CLI管理の差分マイグレーション
+supabase/database/         db pullで取得した現行public schemaの宣言的スナップショット
 migration_*.sql            CLI移行前から存在する旧差分SQL（再適用しない）
 ```
 

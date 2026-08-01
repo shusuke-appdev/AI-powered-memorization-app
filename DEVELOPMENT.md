@@ -41,6 +41,17 @@ supabase migration new <name>
 supabase db push
 ```
 
+現行のpublic schemaは、既存migrationより前に作られた基礎テーブルを含むため、通常の
+`db pull` ではshadow DBへ履歴を再生できません。リモートのmigration履歴を修正せず、
+宣言的スナップショットを更新するときは次を使います。出力先は `supabase/database/` です。
+
+```powershell
+supabase db pull --linked --schema public --declarative --yes
+```
+
+`supabase/database/` は現行スキーマの確認・基準化用です。新規変更の適用単位は引き続き
+`supabase/migrations/` の加算的migrationとし、生成差分は必ずレビューしてから適用します。
+
 2026-08-01時点では、日次割当同期、復習完了、原文カード一括保存・削除、バックアップ
 インポートをRPC内の1トランザクションで処理します。RPCは `SECURITY INVOKER`、固定
 `search_path`、完全修飾テーブル名を使い、実行権限は `service_role` のみに付与します。
@@ -72,8 +83,6 @@ Supabase Data APIの運用ルール:
 
 今後の保留事項:
 
-- 初期スキーマ作成SQL
-- 完全な初期スキーマの基準化（現行の加算的migrationは管理済み）
 - ロール別RLSポリシー
 
 ## 品質確認
@@ -97,6 +106,17 @@ DBマイグレーション前には、対象環境の復元可能なバックア
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\backup_user_data.py
+```
+
+Supabase Free Planでは管理された日次バックアップを利用できないため、完全なローカル論理
+バックアップが必要な場合は、Docker Engineを起動して公式CLIでschema、data、rolesを別々に
+保存します。データダンプは秘密列を含み得るので、Git管理外の `.states/` に保存し、内容を
+ログへ出力しないでください。
+
+```powershell
+supabase db dump --linked --schema public --file .states\supabase_schema.sql
+supabase db dump --linked --data-only --use-copy --schema public --file .states\supabase_data.sql
+supabase db dump --linked --role-only --file .states\supabase_roles.sql
 ```
 
 資格情報を使う公開前確認は、通常のrelease gateと分離して実行します。
