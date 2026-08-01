@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from export_import import export_cards_json, import_cards_json
+from export_import import build_import_preview, export_cards_json, import_cards_json
 from services.time_service import local_date_iso
 from storage import _fetch_all_pages
 
@@ -72,6 +72,95 @@ def test_json_import_skips_duplicates_by_question_and_answer() -> None:
     assert result["error"] is None
     assert result["cards"] == []
     assert result["skipped"] == 1
+
+
+def test_json_import_skips_duplicate_cards_inside_same_file() -> None:
+    exported = json.dumps(
+        {
+            "version": "2.0",
+            "cards": [
+                {
+                    "question": "Q______",
+                    "answer": "A",
+                    "category": "民法",
+                    "card_type": "規範",
+                    "rank": "B",
+                    "blank_count": 1,
+                },
+                {
+                    "question": "Q______",
+                    "answer": "A",
+                    "category": "民法",
+                    "card_type": "規範",
+                    "rank": "B",
+                    "blank_count": 1,
+                },
+            ],
+            "source_cards": [],
+        }
+    )
+
+    result = import_cards_json(exported)
+
+    assert len(result["cards"]) == 1
+    assert result["skipped"] == 1
+
+
+def test_json_import_rejects_unsupported_version_and_missing_source_reference() -> None:
+    unsupported = import_cards_json(json.dumps({"version": "3.0", "cards": []}))
+    missing_source = import_cards_json(
+        json.dumps(
+            {
+                "version": "2.0",
+                "source_cards": [],
+                "cards": [
+                    {
+                        "source_export_id": "missing",
+                        "question": "Q______",
+                        "answer": "A",
+                        "category": "民法",
+                        "card_type": "規範",
+                        "rank": "B",
+                        "blank_count": 1,
+                    }
+                ],
+            }
+        )
+    )
+
+    assert unsupported["error"]
+    assert "参照先" in missing_source["error"]
+    assert build_import_preview(missing_source).can_import is False
+
+
+def test_json_reset_progress_matches_csv_behavior() -> None:
+    exported = json.dumps(
+        {
+            "version": "2.0",
+            "source_cards": [],
+            "cards": [
+                {
+                    "question": "Q______",
+                    "answer": "A",
+                    "category": "民法",
+                    "card_type": "規範",
+                    "rank": "B",
+                    "blank_count": 1,
+                    "ease_factor": 1.5,
+                    "interval": 30,
+                    "repetitions": 8,
+                    "next_review": "2030-01-01",
+                }
+            ],
+        }
+    )
+
+    result = import_cards_json(exported, reset_progress=True)
+
+    assert result["cards"][0]["ease_factor"] == 2.5
+    assert result["cards"][0]["interval"] == 1
+    assert result["cards"][0]["repetitions"] == 0
+    assert result["cards"][0]["next_review"] == local_date_iso()
 
 
 def test_fetch_all_pages_collects_more_than_one_supabase_page() -> None:

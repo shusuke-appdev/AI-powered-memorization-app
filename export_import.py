@@ -8,9 +8,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+from dataclasses import dataclass
 from typing import Any
 
+from application_errors import ValidationError
+from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES
 from services.time_service import local_date_iso
+from use_cases.card_models import CardDraft
 
 EXPORT_SCHEMA_VERSION = "2.0"
 
@@ -29,6 +33,35 @@ _CSV_FIELDNAMES = [
     "repetitions",
     "next_review",
 ]
+
+
+@dataclass(frozen=True)
+class ImportPreview:
+    source_count: int
+    card_count: int
+    skipped_count: int
+    errors: tuple[str, ...]
+    warnings: tuple[str, ...]
+    normalized_payload: dict[str, Any]
+
+    @property
+    def can_import(self) -> bool:
+        return not self.errors and self.card_count > 0
+
+
+def build_import_preview(result: dict[str, Any]) -> ImportPreview:
+    """既存のdict形式を画面表示用の不変プレビューへ変換する。"""
+    errors = list(result.get("errors") or [])
+    if result.get("error") and result["error"] not in errors:
+        errors.append(str(result["error"]))
+    return ImportPreview(
+        source_count=len(result.get("source_cards") or []),
+        card_count=len(result.get("cards") or []),
+        skipped_count=int(result.get("skipped", 0)),
+        errors=tuple(errors),
+        warnings=tuple(result.get("warnings") or []),
+        normalized_payload=result,
+    )
 
 
 def export_cards_json(
@@ -82,6 +115,7 @@ def import_cards_json(
     json_data: str,
     existing_cards: list[dict[str, Any]] | None = None,
     duplicate_action: str = "skip",
+    reset_progress: bool = False,
 ) -> dict[str, Any]:
     """
     JSONからカードデータをインポート可能な中間形式へ変換する。
@@ -102,6 +136,10 @@ def import_cards_json(
             "JSON形式が不正です。ルートはオブジェクトである必要があります。"
         )
 
+    version = str(data.get("version", "1.0"))
+    if version.split(".", 1)[0] not in {"1", "2"}:
+        return _error_result(f"未対応のバックアップversionです: {version}")
+
     raw_source_cards = data.get("source_cards", [])
     raw_cards = data.get("cards", [])
     if not isinstance(raw_source_cards, list) or not isinstance(raw_cards, list):
@@ -109,17 +147,67 @@ def import_cards_json(
             "JSON形式が不正です。cards/source_cards は配列である必要があります。"
         )
 
-    source_cards = [_source_card_from_import_item(item) for item in raw_source_cards]
-    cards = [_card_from_import_item(item) for item in raw_cards]
+    errors: list[str] = []
+    source_cards: list[dict[str, Any]] = []
+    source_ids: set[str] = set()
+    for index, item in enumerate(raw_source_cards, start=1):
+        if not isinstance(item, dict):
+            errors.append(f"原文カード{index}: オブジェクト形式ではありません。")
+            continue
+        source = _source_card_from_import_item(item)
+        source_error = _validate_source_import(source)
+        if source_error:
+            errors.append(f"原文カード{index}: {source_error}")
+            continue
+        export_id = source["export_id"]
+        if export_id in source_ids:
+            errors.append(f"原文カード{index}: export_idが重複しています。")
+            continue
+        source_ids.add(export_id)
+        source_cards.append(source)
+
+    cards: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_cards, start=1):
+        if not isinstance(item, dict):
+            errors.append(f"カード{index}: オブジェクト形式ではありません。")
+            continue
+        card = _card_from_import_item(item)
+        source_export_id = card.get("source_export_id", "")
+        if source_export_id and source_export_id not in source_ids:
+            errors.append(f"カード{index}: 参照先の原文カードがありません。")
+            continue
+        if reset_progress:
+            card.update(_initial_progress())
+        try:
+            CardDraft.from_mapping(card)
+        except ValidationError as exc:
+            errors.append(f"カード{index}: {exc.user_message}")
+            continue
+        cards.append(card)
 
     cards, skipped = _filter_duplicate_cards(cards, existing_cards, duplicate_action)
+
+    if errors:
+        return {
+            "cards": cards,
+            "source_cards": source_cards,
+            "skipped": skipped,
+            "error": errors[0],
+            "errors": errors,
+            "warnings": [],
+            "version": version,
+            "reset_progress": reset_progress,
+        }
 
     return {
         "cards": cards,
         "source_cards": source_cards,
         "skipped": skipped,
         "error": None,
-        "version": str(data.get("version", "1.0")),
+        "version": version,
+        "errors": [],
+        "warnings": [],
+        "reset_progress": reset_progress,
     }
 
 
@@ -144,15 +232,28 @@ def import_cards_csv(
 
     try:
         reader = csv.DictReader(io.StringIO(csv_data))
+        if not reader.fieldnames or "question" not in reader.fieldnames:
+            return {
+                "cards": [],
+                "skipped": 0,
+                "error": "CSVにquestion列がありません。",
+                "errors": ["CSVにquestion列がありません。"],
+                "warnings": [],
+                "reset_progress": reset_progress,
+            }
         cards: list[dict[str, Any]] = []
+        errors: list[str] = []
 
-        for row in reader:
+        for index, row in enumerate(reader, start=2):
+            card_type = _optional_str(row.get("card_type"))
+            if card_type not in CARD_TYPES:
+                card_type = "知識" if not _as_str(row.get("answer")) else "規範"
             card: dict[str, Any] = {
                 "export_id": "",
                 "source_export_id": "",
                 "title": _as_str(row.get("title", "")),
                 "category": _as_str(row.get("category", "その他")) or "その他",
-                "card_type": _optional_str(row.get("card_type")),
+                "card_type": card_type,
                 "rank": _as_str(row.get("rank", "B")) or "B",
                 "question": _as_str(row.get("question", "")),
                 "answer": _as_str(row.get("answer", "")),
@@ -172,14 +273,27 @@ def import_cards_csv(
                     or local_date_iso()
                 )
 
-            if card["question"] and (card["answer"] or card["highlighted_keywords"]):
+            try:
+                CardDraft.from_mapping(card)
+            except ValidationError as exc:
+                errors.append(f"CSV {index}行目: {exc.user_message}")
+            else:
                 cards.append(card)
 
     except Exception as e:
-        return {"cards": [], "skipped": 0, "error": f"CSV解析エラー: {e}"}
+        return _error_result(f"CSV解析エラー: {e}")
 
     cards, skipped = _filter_duplicate_cards(cards, existing_cards, duplicate_action)
-    return {"cards": cards, "skipped": skipped, "error": None}
+    return {
+        "cards": cards,
+        "source_cards": [],
+        "skipped": skipped,
+        "error": errors[0] if errors else None,
+        "errors": errors,
+        "warnings": ["CSVでは原文カードとの紐づきは復元されません。"],
+        "reset_progress": reset_progress,
+        "version": "csv",
+    }
 
 
 def _source_card_to_export_item(source_card: dict[str, Any]) -> dict[str, Any]:
@@ -217,28 +331,36 @@ def _card_to_export_item(card: dict[str, Any]) -> dict[str, Any]:
 def _source_card_from_import_item(item: Any) -> dict[str, Any]:
     raw = item if isinstance(item, dict) else {}
     export_id = _as_str(raw.get("export_id") or raw.get("id"))
+    card_type = _optional_str(raw.get("card_type"))
+    if card_type not in CARD_TYPES:
+        card_type = "規範"
     return {
         "export_id": export_id,
         "source_text": _as_str(raw.get("source_text")),
         "title": _as_str(raw.get("title")),
         "category": _as_str(raw.get("category", "その他")) or "その他",
-        "card_type": _optional_str(raw.get("card_type")),
+        "card_type": card_type,
         "created_at": _as_str(raw.get("created_at")),
     }
 
 
 def _card_from_import_item(item: Any) -> dict[str, Any]:
     raw = item if isinstance(item, dict) else {}
+    answer = _as_str(raw.get("answer"))
+    card_type = _optional_str(raw.get("card_type"))
+    if card_type not in CARD_TYPES:
+        card_type = "知識" if not answer else "規範"
+    blank_count_default = 0 if card_type in BLANK_DISABLED_TYPES else 1
     return {
         "export_id": _as_str(raw.get("export_id") or raw.get("id")),
         "source_export_id": _as_str(
             raw.get("source_export_id") or raw.get("source_id")
         ),
         "question": _as_str(raw.get("question")),
-        "answer": _as_str(raw.get("answer")),
+        "answer": answer,
         "title": _as_str(raw.get("title")),
         "category": _as_str(raw.get("category", "その他")) or "その他",
-        "card_type": _optional_str(raw.get("card_type")),
+        "card_type": card_type,
         "rank": _as_str(raw.get("rank", "B")) or "B",
         "highlighted_keywords": _as_str(raw.get("highlighted_keywords")),
         "ease_factor": _as_float(raw.get("ease_factor"), 2.5),
@@ -246,7 +368,7 @@ def _card_from_import_item(item: Any) -> dict[str, Any]:
         "repetitions": _as_int(raw.get("repetitions"), 0),
         "next_review": _as_str(raw.get("next_review", local_date_iso()))
         or local_date_iso(),
-        "blank_count": _as_int(raw.get("blank_count"), 1),
+        "blank_count": _as_int(raw.get("blank_count"), blank_count_default),
         "is_favorite": _as_bool(raw.get("is_favorite"), False),
     }
 
@@ -257,11 +379,12 @@ def _filter_duplicate_cards(
     duplicate_action: str,
 ) -> tuple[list[dict[str, Any]], int]:
     skipped = 0
-    if not existing_cards or duplicate_action != "skip":
+    if duplicate_action != "skip":
         return cards, skipped
 
     existing_set = {
-        (_as_str(c.get("question")), _as_str(c.get("answer"))) for c in existing_cards
+        (_as_str(c.get("question")), _as_str(c.get("answer")))
+        for c in (existing_cards or [])
     }
     new_cards: list[dict[str, Any]] = []
     for card in cards:
@@ -270,6 +393,7 @@ def _filter_duplicate_cards(
             skipped += 1
             continue
         new_cards.append(card)
+        existing_set.add(key)
     return new_cards, skipped
 
 
@@ -288,8 +412,23 @@ def _error_result(message: str) -> dict[str, Any]:
         "source_cards": [],
         "skipped": 0,
         "error": message,
+        "errors": [message],
+        "warnings": [],
         "version": None,
+        "reset_progress": False,
     }
+
+
+def _validate_source_import(source: dict[str, Any]) -> str | None:
+    if not source.get("export_id"):
+        return "export_idがありません。"
+    if not str(source.get("source_text") or "").strip():
+        return "原文が空です。"
+    if source.get("category") not in CATEGORIES:
+        return "カテゴリが不正です。"
+    if source.get("card_type") not in CARD_TYPES:
+        return "カードタイプが不正です。"
+    return None
 
 
 def _as_str(value: object) -> str:

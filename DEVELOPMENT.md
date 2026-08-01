@@ -2,7 +2,7 @@
 
 ## 前提
 
-- Python 3.10 以上
+- Python 3.12
 - Supabaseプロジェクト
 - Streamlit
 
@@ -33,7 +33,19 @@ Streamlit Cloudでは `.streamlit/secrets.toml` 相当のSecretsに同名で設�
 
 ## データベース
 
-現状のSQLは差分マイグレーションのみです。
+新規変更はSupabase CLI管理の `supabase/migrations/` に加算的に追加します。ルート直下の
+`migration_*.sql` はCLI導入前の履歴であり、適用済み環境へ再適用しません。
+
+```powershell
+supabase migration new <name>
+supabase db push
+```
+
+2026-08-01時点では、日次割当同期、復習完了、原文カード一括保存・削除、バックアップ
+インポートをRPC内の1トランザクションで処理します。RPCは `SECURITY INVOKER`、固定
+`search_path`、完全修飾テーブル名を使い、実行権限は `service_role` のみに付与します。
+
+CLI導入前の差分SQL:
 
 - `migration_rls.sql`: RLSを有効化し、全テーブルをpublicから拒否する。
 - `migration_data_api_grants.sql`: Supabase Data API向けに明示GRANTを設定する。現行運用では `service_role` のみに `users`, `sessions`, `cards`, `source_cards`, `daily_assignments` のCRUD権限を付与し、`anon` / `authenticated` には付与しない。
@@ -58,11 +70,10 @@ Supabase Data APIの運用ルール:
 - 新しいテーブルを追加するときは、テーブル作成SQL、RLS設定、必要最小限のGRANTを同じ変更に含める。
 - ブラウザや外部クライアントからSupabaseへ直接アクセスする構成に変える場合は、`anon` / `authenticated` へのGRANTと所有者ベースのRLSポリシーを別途設計する。
 
-不足しているもの:
+今後の保留事項:
 
 - 初期スキーマ作成SQL
-- 外部キー、NOT NULL、CHECK制約、インデックスの明文化
-- マイグレーション適用順序の管理
+- 完全な初期スキーマの基準化（現行の加算的migrationは管理済み）
 - ロール別RLSポリシー
 
 ## 品質確認
@@ -81,6 +92,19 @@ GitHub CLI と Supabase の運用ヘルスチェックは次で実行できま�
 .\.venv\Scripts\python.exe scripts\health_check.py
 ```
 
+DBマイグレーション前には、対象環境の復元可能なバックアップを確認します。ローカルの
+論理バックアップは秘密列とセッションを除外して次で作成できます。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backup_user_data.py
+```
+
+資格情報を使う公開前確認は、通常のrelease gateと分離して実行します。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\live_smoke.py
+```
+
 検証環境を再作成する場合は、新しい仮想環境を作って依存関係を入れ直してください。
 
 ```powershell
@@ -93,16 +117,14 @@ py -3.12 -m venv .venv
 
 ## テスト方針
 
-現状のテストは `services.card_service`, `services.review_service`, JSONバックアップ復元、書き込みユースケース、ページング、日付境界のロジックが中心です。
+現状のテストはカード生成、復習、セッション分離、JSON/CSVインポート、書き込み
+ユースケース、Repository契約、Streamlit AppTest、ページング、日付境界を対象にします。
 
 優先して追加すべきテスト:
 
-- 認証/セッションの境界条件
-- 日次ノルマ変更時の既レビュー済みカード保持
 - `source_id` 単位の出題重複制御
 - 知識/類型カードのハイライト
-- SupabaseをmockしたRepository/Use case統合テスト
-- Streamlit主要画面のE2Eまたはコンポーネントテスト
+- 実PostgreSQLでの同時実行競合テスト
 - HTMLエスケープ
 
 ## 実装ルール
@@ -119,7 +141,7 @@ py -3.12 -m venv .venv
 - RLS全拒否 + 強いキーでのアプリ操作は、アプリサーバーが完全に信頼できる場合の暫定設計として扱う。
 - Streamlit CloudのSecrets設定とSupabaseのキー権限を定期確認する。
 - Supabase DashboardのSecurity Advisorで、Data APIに公開されているテーブルとRLS警告を定期確認する。
-- `migration_daily_assignments.sql` と `migration_data_api_grants.sql` 実行後は、ログイン、カード追加、復習更新、統計表示、削除、同日再ログイン時のノルマ維持を本番相当データで1件ずつ確認する。ローカルSecretsがある環境では `python scripts/live_smoke.py` でサービス層の最小確認ができる。
+- migration適用後は、`scripts/live_smoke.py` で一時データの作成・割当同期・復習二重送信・削除と残骸ゼロを確認する。
 
 GitHub Actions の `Health Check` workflow は、3日に1回と手動実行時に
 `scripts/health_check.py` を実行します。

@@ -6,12 +6,11 @@ import os
 import socket
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlparse
-
-import tomllib
 
 EXIT_OK = 0
 EXIT_CONFIG = 2

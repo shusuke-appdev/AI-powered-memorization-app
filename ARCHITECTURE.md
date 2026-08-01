@@ -12,7 +12,8 @@ flowchart LR
     Pages --> Services["services/* / stats.py / export_import.py"]
     UseCases --> Storage["storage.py / auth.py"]
     Pages --> Storage
-    Storage --> DB["Supabase PostgreSQL"]
+    Storage --> RPC["Postgres RPC / single-row CRUD"]
+    RPC --> DB["Supabase PostgreSQL"]
     Pages --> BrowserSpeech["Web Speech API"]
 ```
 
@@ -35,7 +36,10 @@ flowchart LR
 - `services/card_service.py`: `【】` マーカーの解析、穴埋めカード生成、ハイライト適用。
 - `services/review_service.py`: SM-2計算、日次出題候補の選択。
 - `services/time_service.py`: アプリ基準日付を日本時間へ統一。
-- `use_cases/card_workflows.py`: カード作成、再生成、インポートの複数DB書き込みをまとめ、途中失敗時に作成分を戻す。
+- `services/session_service.py`: ログアウトとユーザー切替時のユーザー依存状態を消去。
+- `use_cases/card_models.py`: `CardDraft` と `SourceBundleCommand` の入力検証。
+- `use_cases/card_workflows.py`: カード作成、再生成、インポートを検証してトランザクションRPCへ渡す。
+- `use_cases/review_workflows.py`: 日次割当と復習完了の原子更新、migration欠落時だけの互換フォールバック。
 - `stats.py`: 学習統計計算。
 - `export_import.py`: JSON/CSV変換。
 - `config.py`: カテゴリ、タイプ、ランク、アルゴリズム定数。
@@ -44,7 +48,8 @@ flowchart LR
 
 - `database.py`: Supabaseクライアント生成、接続情報解決、接続エラー。
 - `auth.py`: ユーザー、ノルマ、セッション。
-- `storage.py`: `cards`, `source_cards`, `daily_assignments` のCRUDとページング読み込み。
+- `storage.py`: 所有者付き読み込み、単一行CRUD、日次割当・復習・原文束・インポートのRPC呼び出し。
+- `supabase/migrations/`: 制約、権限、トランザクションRPCを管理する加算的migration。
 
 ## 主要フロー
 
@@ -62,31 +67,31 @@ flowchart LR
 
 1. `pages/add_card_page.py` でカテゴリ、ランク、タイプ、タイトル、原文を入力する。
 2. 穴埋めありタイプでは `services.card_service.parse_blanks_from_text()` が `【】` からカード候補を作る。
-3. 保存時に `use_cases.card_workflows.save_source_with_cards()` が原文カードと暗記カードをまとめて作る。
-4. 途中失敗時は作成済み暗記カードと原文カードを削除して、部分保存を避ける。
+3. 保存前に `SourceBundleCommand` が属性・必須値・カード一覧を一括検証する。
+4. `save_source_bundle` RPCが原文カードと暗記カードを同じDBトランザクションで保存する。
 5. `storage.clear_cards_cache()` / `clear_source_cards_cache()` でキャッシュを破棄する。
 
 ### 復習
 
 1. `pages/review_page.py` が `storage.load_cards()` でカードを読む。
 2. `next_review <= today` のカードを抽出する。
-3. `daily_assignments` に当日割当があればそれを使い、なければ `services.review_service.select_hybrid_quota()` で候補を決めて保存する。
+3. 候補を選び、`sync_daily_assignments` RPCで当日のquota・削除済みカード・順序を毎回同期する。
 4. ユーザーの自己評価を `calculate_next_review()` に渡す。
-5. `storage.update_card_progress()` が学習進捗を保存し、`mark_daily_assignment_complete()` が当日割当を完了済みにする。
+5. `complete_daily_review` RPCがカード進捗と割当完了を原子的・冪等に保存する。
 
 ### 管理
 
 1. `pages/manage_page.py` が原文カードと暗記カードを読み込む。
 2. 原文カードごとに紐づく暗記カードをUIで編集する。
-3. 保存時に `storage.update_source_card()` と `storage.update_card_content()` を呼ぶ。
-4. 再生成時は新カード作成に成功してから原文更新と旧カード削除を行い、途中失敗で既存カードを失わない。
+3. 保存・再生成は検証済みpayloadを `save_source_bundle` RPCで一括更新する。
+4. 穴埋め型と非穴埋め型をまたぐ変更は、再生成プレビューを経ない直接保存を拒否する。
 
 ### 統計/インポート/エクスポート
 
 1. `stats.calculate_statistics()` がカードの状態から集計を作る。
 2. `export_import.export_cards_json()` / `export_cards_csv()` が出力する。
-3. `import_cards_json()` / `import_cards_csv()` がアップロードファイルをパースする。
-4. `use_cases.card_workflows.import_backup_payload()` が原文カードの新旧ID対応表を作り、暗記カードの `source_id` を復元して保存する。
+3. `ImportPreview` がversion、型、必須値、参照関係、ファイル内重複を検証する。
+4. 確認後に `import_backup_atomic` RPCが全件を保存し、1件でも失敗すれば全件を戻す。
 
 ## 現在の境界の弱い箇所
 
@@ -94,7 +99,7 @@ flowchart LR
 - `dict[str, Any]` が多く、DB行、ドメインカード、UI入力の型が混在している。
 - StreamlitのHTML描画に未エスケープのユーザー入力が入る。
 - ログイン画面で任意のユーザーを選べるため、厳密な個人認証には向かない。
-- DBマイグレーションが差分SQLのみで、完全な初期スキーマを再構築できない。
+- 完全な初期スキーマの基準化は未完了だが、新規差分はSupabase CLIで管理している。
 
 ## 望ましい方向性
 

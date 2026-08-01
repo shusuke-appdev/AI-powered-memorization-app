@@ -8,20 +8,20 @@ from typing import Any
 
 import streamlit as st
 
+from application_errors import MigrationUnavailableError
 from auth import get_daily_quota_limit
 from services.card_service import apply_highlight
 from services.html_rendering import escape_html, safe_category_class
-from services.review_service import calculate_next_review, reconcile_daily_quota
+from services.review_service import reconcile_daily_quota
 from services.time_service import local_date_iso
 from storage import (
     get_source_cards_by_ids,
     load_cards,
     load_daily_assignments,
-    mark_daily_assignment_complete,
-    save_daily_assignments,
+    sync_daily_assignments,
     toggle_favorite_by_source_id,
-    update_card_progress,
 )
+from use_cases.review_workflows import complete_review
 
 # セッション状態キー
 _SK_QUOTA_DATE = "quota_date"
@@ -55,45 +55,53 @@ def render_review_page(user_id: str) -> None:
     cards_by_id: dict[str, dict[str, Any]] = {str(c["id"]): c for c in cards}
 
     assignments = load_daily_assignments(user_id, today)
-    if assignments:
+    persisted_quota_ids = [
+        str(item["card_id"])
+        for item in assignments
+        if str(item.get("card_id")) in cards_by_id
+    ]
+    db_reviewed_ids = [
+        str(item["card_id"]) for item in assignments if item.get("completed_at")
+    ]
+    session_reviewed_ids: list[str] = st.session_state.get(_SK_REVIEWED_CARD_IDS, [])
+    reviewed_card_id_list = list(dict.fromkeys(db_reviewed_ids + session_reviewed_ids))
+    current_quota_ids = persisted_quota_ids or st.session_state.get(_SK_QUOTA_CARD_IDS)
+    quota_card_id_list = reconcile_daily_quota(
+        current_quota_ids,
+        reviewed_card_id_list,
+        all_due_cards,
+        daily_limit,
+        cards,
+    )
+
+    try:
+        assignments = sync_daily_assignments(user_id, today, quota_card_id_list)
+    except MigrationUnavailableError:
+        assignments = []
+    else:
         quota_card_id_list = [
             str(item["card_id"])
             for item in assignments
             if str(item.get("card_id")) in cards_by_id
         ]
-        db_reviewed_ids = [
+        persisted_reviewed_ids = [
             str(item["card_id"]) for item in assignments if item.get("completed_at")
         ]
-        session_reviewed_ids: list[str] = st.session_state.get(
-            _SK_REVIEWED_CARD_IDS, []
-        )
         reviewed_card_id_list = list(
-            dict.fromkeys(db_reviewed_ids + session_reviewed_ids)
+            dict.fromkeys(persisted_reviewed_ids + session_reviewed_ids)
         )
-        reviewed_source_ids = [
-            str(item["source_id"])
-            for item in assignments
-            if item.get("completed_at") and item.get("source_id")
-        ]
-        st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
-        st.session_state[_SK_REVIEWED_CARD_IDS] = reviewed_card_id_list
-        if reviewed_source_ids:
-            st.session_state[_SK_REVIEWED_SOURCE_IDS] = list(
-                dict.fromkeys(reviewed_source_ids)
-            )
-    else:
-        reviewed_card_id_list = st.session_state.get(_SK_REVIEWED_CARD_IDS, [])
-        current_quota_ids = st.session_state.get(_SK_QUOTA_CARD_IDS)
-        quota_card_id_list = reconcile_daily_quota(
-            current_quota_ids,
-            reviewed_card_id_list,
-            all_due_cards,
-            daily_limit,
-            cards,
+
+    reviewed_source_ids = [
+        str(item["source_id"])
+        for item in assignments
+        if item.get("completed_at") and item.get("source_id")
+    ]
+    st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
+    st.session_state[_SK_REVIEWED_CARD_IDS] = reviewed_card_id_list
+    if reviewed_source_ids:
+        st.session_state[_SK_REVIEWED_SOURCE_IDS] = list(
+            dict.fromkeys(reviewed_source_ids)
         )
-        if quota_card_id_list != current_quota_ids:
-            st.session_state[_SK_QUOTA_CARD_IDS] = quota_card_id_list
-        save_daily_assignments(user_id, today, quota_card_id_list, cards_by_id)
 
     reviewed_card_ids: set[str] = set(reviewed_card_id_list)
     due_cards = [
@@ -147,7 +155,7 @@ def _render_source_review(
     st.subheader("📖 ノルマ復習（原文確認）")
     st.markdown("今日復習したカードの原文を確認できます。")
 
-    source_cards = get_source_cards_by_ids(list(set(reviewed_source_ids)))
+    source_cards = get_source_cards_by_ids(user_id, list(set(reviewed_source_ids)))
 
     if not source_cards:
         st.info("原文カードが見つかりませんでした。")
@@ -323,6 +331,8 @@ def _render_study_card(
 def _process_review(user_id: str, card: dict[str, Any], *, quality: int) -> None:
     """レビュー結果を処理しセッション状態を更新"""
     card_id: str = card["id"]
+    complete_review(user_id, local_date_iso(), card, quality=quality)
+
     if _SK_REVIEWED_CARD_IDS not in st.session_state:
         st.session_state[_SK_REVIEWED_CARD_IDS] = []
     if card_id not in st.session_state[_SK_REVIEWED_CARD_IDS]:
@@ -338,13 +348,5 @@ def _process_review(user_id: str, card: dict[str, Any], *, quality: int) -> None
         if source_id not in st.session_state[_SK_REVIEWED_SOURCE_IDS]:
             st.session_state[_SK_REVIEWED_SOURCE_IDS].append(source_id)
 
-    new_stats = calculate_next_review(quality, card)
-    update_card_progress(user_id, card["id"], new_stats)
-    mark_daily_assignment_complete(
-        user_id,
-        local_date_iso(),
-        card["id"],
-        quality=quality,
-    )
     st.session_state[_SK_SHOW_ANSWER] = False
     st.rerun()

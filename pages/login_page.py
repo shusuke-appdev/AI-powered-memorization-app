@@ -13,6 +13,7 @@ from auth import (
     login_user_direct,
     register_user,
 )
+from services.session_service import reset_user_session_state
 
 
 def show_login_page(cookie_controller: CookieController) -> None:
@@ -37,6 +38,7 @@ def _set_login_session(
     cookie_controller: CookieController, user_id: str, username: str | None
 ) -> None:
     """ログイン成功後のセッションを保存"""
+    reset_user_session_state(st.session_state)
     st.session_state.user_id = user_id
     st.session_state.username = username or "ユーザー"
 

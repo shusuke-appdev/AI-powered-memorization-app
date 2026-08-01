@@ -6,14 +6,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
-from typing import Any
+from typing import Any, TypeVar
 
 import streamlit as st
+from streamlit.runtime import exists as streamlit_runtime_exists
 
+from application_errors import (
+    MigrationUnavailableError,
+    PersistenceError,
+    RecordNotFoundError,
+)
 from database import get_supabase
 from services.review_service import get_initial_card_state
-from services.time_service import utc_now_iso
+from services.time_service import local_date_iso
 
 # キャッシュのTTL（秒）
 _CACHE_TTL: int = 60
@@ -28,6 +33,21 @@ _CARD_COLUMNS = (
 _SOURCE_CARD_COLUMNS = (
     "id, user_id, source_text, title, category, card_type, created_at"
 )
+
+_FunctionT = TypeVar("_FunctionT", bound=Callable[..., Any])
+
+
+def _cache_data_when_streamlit_runs(function: _FunctionT) -> _FunctionT:
+    """bare PythonスクリプトではStreamlitキャッシュと警告を発生させない。"""
+    if streamlit_runtime_exists():
+        return st.cache_data(ttl=_CACHE_TTL, show_spinner=False)(function)
+    return function
+
+
+def _clear_function_cache(function: Callable[..., Any]) -> None:
+    clear = getattr(function, "clear", None)
+    if callable(clear):
+        clear()
 
 
 # ============ DTO変換 ============
@@ -55,27 +75,27 @@ def _row_to_card(row: dict[str, Any]) -> dict[str, Any]:
     """DBの行データをアプリ内カード形式に変換"""
     return {
         "id": row["id"],
-        "question": row["question"],
-        "answer": row["answer"],
-        "title": row.get("title", ""),
-        "category": row.get("category", "その他"),
-        "ease_factor": row.get("ease_factor", 2.5),
-        "interval": row.get("interval", 1),
-        "repetitions": row.get("repetitions", 0),
-        "next_review": row.get("next_review", date.today().isoformat()),
+        "question": row.get("question") or "",
+        "answer": row.get("answer") or "",
+        "title": row.get("title") or "",
+        "category": row.get("category") or "その他",
+        "ease_factor": row.get("ease_factor") or 2.5,
+        "interval": row.get("interval") or 1,
+        "repetitions": row.get("repetitions") or 0,
+        "next_review": row.get("next_review") or local_date_iso(),
         "source_id": row.get("source_id"),
-        "blank_count": row.get("blank_count", 1),
-        "is_favorite": row.get("is_favorite", False),
+        "blank_count": row.get("blank_count") or 0,
+        "is_favorite": bool(row.get("is_favorite", False)),
         "card_type": row.get("card_type"),
-        "rank": row.get("rank", "B"),
-        "highlighted_keywords": row.get("highlighted_keywords", ""),
+        "rank": row.get("rank") or "B",
+        "highlighted_keywords": row.get("highlighted_keywords") or "",
     }
 
 
 # ============ 暗記カード管理 ============
 
 
-@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+@_cache_data_when_streamlit_runs
 def _load_cards_cached(user_id: str) -> list[dict[str, Any]]:
     """キャッシュ付きでカードを読み込む（内部用）"""
     supabase = get_supabase()
@@ -105,7 +125,7 @@ def load_cards(user_id: str) -> list[dict[str, Any]]:
 
 def clear_cards_cache(user_id: str | None = None) -> None:
     """カードのキャッシュをクリア"""
-    _load_cards_cached.clear()
+    _clear_function_cache(_load_cards_cached)
 
 
 def add_card(
@@ -196,7 +216,7 @@ def add_source_card(
     return None
 
 
-@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+@_cache_data_when_streamlit_runs
 def _load_source_cards_cached(user_id: str) -> list[dict[str, Any]]:
     """キャッシュ付きで原文カードを読み込む（内部用）"""
     supabase = get_supabase()
@@ -222,20 +242,34 @@ def load_source_cards(user_id: str) -> list[dict[str, Any]]:
 
 def clear_source_cards_cache(user_id: str | None = None) -> None:
     """原文カードのキャッシュをクリア"""
-    _load_source_cards_cached.clear()
+    _clear_function_cache(_load_source_cards_cached)
 
 
-def get_source_card(source_id: str) -> dict[str, Any] | None:
+def _require_affected_row(result: Any, label: str) -> None:
+    """単一行更新が0件だった場合に成功扱いしない。"""
+    if not getattr(result, "data", None):
+        raise RecordNotFoundError(f"{label}が見つからないか、更新権限がありません。")
+
+
+def get_source_card(user_id: str, source_id: str) -> dict[str, Any] | None:
     """特定の原文カードを取得"""
     supabase = get_supabase()
-    result = supabase.table("source_cards").select("*").eq("id", source_id).execute()
+    result = (
+        supabase.table("source_cards")
+        .select("*")
+        .eq("id", source_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
 
     if result.data:
         return result.data[0]
     return None
 
 
-def get_source_cards_by_ids(source_ids: list[str]) -> list[dict[str, Any]]:
+def get_source_cards_by_ids(
+    user_id: str, source_ids: list[str]
+) -> list[dict[str, Any]]:
     """複数の原文カードを取得"""
     if not source_ids:
         return []
@@ -248,6 +282,7 @@ def get_source_cards_by_ids(source_ids: list[str]) -> list[dict[str, Any]]:
             supabase.table("source_cards")
             .select(_SOURCE_CARD_COLUMNS)
             .in_("id", batch)
+            .eq("user_id", user_id)
             .execute()
         )
         if result.data:
@@ -260,9 +295,15 @@ def delete_source_card(user_id: str, source_id: str) -> None:
     """原文カードを削除"""
     supabase = get_supabase()
 
-    supabase.table("source_cards").delete().eq("id", source_id).eq(
-        "user_id", user_id
-    ).execute()
+    result = (
+        supabase.table("source_cards")
+        .delete()
+        .eq("id", source_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "原文カード")
 
     # キャッシュをクリア
     clear_source_cards_cache(user_id)
@@ -292,9 +333,15 @@ def update_source_card(
     if not update_data:
         return
 
-    supabase.table("source_cards").update(update_data).eq("id", source_id).eq(
-        "user_id", user_id
-    ).execute()
+    result = (
+        supabase.table("source_cards")
+        .update(update_data)
+        .eq("id", source_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "原文カード")
 
     # キャッシュをクリア
     clear_source_cards_cache(user_id)
@@ -307,14 +354,22 @@ def update_card_progress(user_id: str, card_id: str, stats: dict[str, Any]) -> N
     """カードの学習進捗を更新"""
     supabase = get_supabase()
 
-    supabase.table("cards").update(
-        {
-            "ease_factor": stats["ease_factor"],
-            "interval": stats["interval"],
-            "repetitions": stats["repetitions"],
-            "next_review": stats["next_review"],
-        }
-    ).eq("id", card_id).eq("user_id", user_id).execute()
+    result = (
+        supabase.table("cards")
+        .update(
+            {
+                "ease_factor": stats["ease_factor"],
+                "interval": stats["interval"],
+                "repetitions": stats["repetitions"],
+                "next_review": stats["next_review"],
+            }
+        )
+        .eq("id", card_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "カード")
 
     # キャッシュをクリア
     clear_cards_cache(user_id)
@@ -330,6 +385,7 @@ def update_card_content(
     card_type: str | None = None,
     rank: str | None = None,
     highlighted_keywords: str | None = None,
+    blank_count: int | None = None,
 ) -> None:
     """カードの内容を更新"""
     supabase = get_supabase()
@@ -346,10 +402,18 @@ def update_card_content(
         update_data["rank"] = rank
     if highlighted_keywords is not None:
         update_data["highlighted_keywords"] = highlighted_keywords
+    if blank_count is not None:
+        update_data["blank_count"] = blank_count
 
-    supabase.table("cards").update(update_data).eq("id", card_id).eq(
-        "user_id", user_id
-    ).execute()
+    result = (
+        supabase.table("cards")
+        .update(update_data)
+        .eq("id", card_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "カード")
 
     # キャッシュをクリア
     clear_cards_cache(user_id)
@@ -359,7 +423,15 @@ def delete_card(user_id: str, card_id: str) -> None:
     """カードを削除"""
     supabase = get_supabase()
 
-    supabase.table("cards").delete().eq("id", card_id).eq("user_id", user_id).execute()
+    result = (
+        supabase.table("cards")
+        .delete()
+        .eq("id", card_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "カード")
 
     # キャッシュをクリア
     clear_cards_cache(user_id)
@@ -410,29 +482,10 @@ def save_daily_assignments(
     cards_by_id: dict[str, dict[str, Any]],
 ) -> bool:
     """指定日のノルマ割当をDBへ保存する。テーブル未適用ならFalseを返す。"""
-    if not card_ids:
-        return True
-
-    rows = []
-    for position, card_id in enumerate(card_ids):
-        card = cards_by_id.get(card_id, {})
-        rows.append(
-            {
-                "user_id": user_id,
-                "assignment_date": assignment_date,
-                "card_id": card_id,
-                "source_id": card.get("source_id"),
-                "position": position,
-            }
-        )
-
-    supabase = get_supabase()
     try:
-        supabase.table("daily_assignments").insert(rows).execute()
-    except Exception as exc:
-        if _is_missing_daily_assignments_error(exc):
-            return False
-        raise
+        sync_daily_assignments(user_id, assignment_date, card_ids)
+    except MigrationUnavailableError:
+        return False
     return True
 
 
@@ -444,18 +497,162 @@ def mark_daily_assignment_complete(
     quality: int,
 ) -> bool:
     """指定日のカード割当を完了済みにする。テーブル未適用ならFalseを返す。"""
+    raise PersistenceError(
+        "復習進捗はcomplete_daily_review_atomicから更新してください。"
+    )
+
+
+def sync_daily_assignments(
+    user_id: str,
+    assignment_date: str,
+    card_ids: list[str],
+) -> list[dict[str, Any]]:
+    """当日割当を所有者検証・ロック付きRPCで同期する。"""
     supabase = get_supabase()
     try:
-        supabase.table("daily_assignments").update(
-            {"completed_at": utc_now_iso(), "quality": quality}
-        ).eq("user_id", user_id).eq("assignment_date", assignment_date).eq(
-            "card_id", card_id
+        result = supabase.rpc(
+            "sync_daily_assignments",
+            {
+                "p_user_id": user_id,
+                "p_assignment_date": assignment_date,
+                "p_card_ids": card_ids,
+            },
         ).execute()
     except Exception as exc:
-        if _is_missing_daily_assignments_error(exc):
-            return False
+        if _is_missing_database_object_error(exc, "sync_daily_assignments"):
+            raise MigrationUnavailableError() from exc
         raise
-    return True
+    return _rpc_rows(result)
+
+
+def complete_daily_review_atomic(
+    user_id: str,
+    assignment_date: str,
+    card_id: str,
+    *,
+    quality: int,
+    stats: dict[str, Any],
+) -> dict[str, Any]:
+    """カード進捗と割当完了を単一トランザクションで更新する。"""
+    supabase = get_supabase()
+    try:
+        result = supabase.rpc(
+            "complete_daily_review",
+            {
+                "p_user_id": user_id,
+                "p_assignment_date": assignment_date,
+                "p_card_id": card_id,
+                "p_quality": quality,
+                "p_ease_factor": stats["ease_factor"],
+                "p_interval": stats["interval"],
+                "p_repetitions": stats["repetitions"],
+                "p_next_review": stats["next_review"],
+            },
+        ).execute()
+    except Exception as exc:
+        if _is_missing_database_object_error(exc, "complete_daily_review"):
+            raise MigrationUnavailableError() from exc
+        raise
+    rows = _rpc_rows(result)
+    if not rows:
+        raise PersistenceError("復習結果を保存できませんでした。")
+    clear_cards_cache(user_id)
+    return rows[0]
+
+
+def save_source_bundle_rpc(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """原文とカードをトランザクションで作成・更新・置換する。"""
+    try:
+        result = (
+            get_supabase()
+            .rpc(
+                "save_source_bundle",
+                {"p_user_id": user_id, "p_bundle": payload},
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise PersistenceError("カードを保存できませんでした。") from exc
+    rows = _rpc_rows(result)
+    if not rows:
+        raise PersistenceError("カードを保存できませんでした。")
+    clear_cards_cache(user_id)
+    clear_source_cards_cache(user_id)
+    return rows[0]
+
+
+def delete_source_bundle_rpc(user_id: str, source_id: str) -> None:
+    """原文と関連カードをトランザクションで削除する。"""
+    try:
+        result = (
+            get_supabase()
+            .rpc(
+                "delete_source_bundle",
+                {"p_user_id": user_id, "p_source_id": source_id},
+            )
+            .execute()
+        )
+    except Exception as exc:
+        if str(getattr(exc, "code", "")) == "42501":
+            raise RecordNotFoundError("削除対象の原文カードが見つかりません。") from exc
+        raise PersistenceError("原文カードを削除できませんでした。") from exc
+    rows = _rpc_rows(result)
+    if not rows or int(rows[0].get("source_count", 0)) != 1:
+        raise RecordNotFoundError("削除対象の原文カードが見つかりません。")
+    clear_cards_cache(user_id)
+    clear_source_cards_cache(user_id)
+
+
+def import_backup_atomic_rpc(
+    user_id: str,
+    *,
+    source_cards: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+    reset_progress: bool,
+) -> dict[str, Any]:
+    """検証済みバックアップを単一トランザクションで保存する。"""
+    try:
+        result = (
+            get_supabase()
+            .rpc(
+                "import_backup_atomic",
+                {
+                    "p_user_id": user_id,
+                    "p_sources": source_cards,
+                    "p_cards": cards,
+                    "p_reset_progress": reset_progress,
+                },
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise PersistenceError("バックアップを保存できませんでした。") from exc
+    rows = _rpc_rows(result)
+    if not rows:
+        raise PersistenceError("バックアップを保存できませんでした。")
+    clear_cards_cache(user_id)
+    clear_source_cards_cache(user_id)
+    return rows[0]
+
+
+def _rpc_rows(result: Any) -> list[dict[str, Any]]:
+    data = getattr(result, "data", None)
+    if isinstance(data, dict):
+        return [data]
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    return []
+
+
+def _is_missing_database_object_error(exc: Exception, object_name: str) -> bool:
+    message = str(exc).lower()
+    code = str(getattr(exc, "code", "")).upper()
+    return object_name.lower() in message and (
+        code in {"42P01", "42883", "PGRST202"}
+        or "does not exist" in message
+        or "could not find" in message
+        or "schema cache" in message
+    )
 
 
 def _is_missing_daily_assignments_error(exc: Exception) -> bool:
@@ -472,9 +669,15 @@ def toggle_favorite(user_id: str, card_id: str, is_favorite: bool) -> None:
     """カードのお気に入り状態をトグル"""
     supabase = get_supabase()
 
-    supabase.table("cards").update({"is_favorite": is_favorite}).eq("id", card_id).eq(
-        "user_id", user_id
-    ).execute()
+    result = (
+        supabase.table("cards")
+        .update({"is_favorite": is_favorite})
+        .eq("id", card_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    _require_affected_row(result, "カード")
 
     # キャッシュをクリア
     clear_cards_cache(user_id)

@@ -24,3 +24,21 @@ def test_dns_error_is_found_in_exception_chain() -> None:
 
 def test_unrelated_error_is_not_converted() -> None:
     assert as_database_connection_error(ValueError("invalid input")) is None
+
+
+def test_timeout_is_converted_without_exposing_raw_backend_message() -> None:
+    converted = as_database_connection_error(
+        RuntimeError("connection timed out secret=do-not-show")
+    )
+
+    assert converted is not None
+    assert "secret" not in converted.message
+
+
+def test_auth_error_is_converted_without_raw_key_details() -> None:
+    converted = as_database_connection_error(
+        RuntimeError("401 unauthorized key=do-not-show")
+    )
+
+    assert converted is not None
+    assert "do-not-show" not in converted.message

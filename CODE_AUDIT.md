@@ -1,6 +1,8 @@
 # コード総点検
 
 調査日: 2026-05-14 / 更新: 2026-05-28
+
+> 2026-08-01追記: 本文は過去監査の記録です。ユーザー分離、入力検証、日次割当・復習・原文束・インポートのトランザクションRPC化、Streamlit AppTestと実ブラウザ確認は実装済みです。現行状態は `progress.md` を参照してください。
 対象: `app.py`, `auth.py`, `database.py`, `storage.py`, `services/*`, `pages/*`, `stats.py`, `export_import.py`, `components.py`, `styles/*`, `tests/*`, 既存ドキュメント
 
 ## 総評

@@ -7,6 +7,7 @@ from __future__ import annotations
 import streamlit as st
 
 from auth import get_daily_quota_limit, update_daily_quota_limit
+from services.session_service import reset_user_session_state
 from styles import apply_dark_mode_styles
 
 
@@ -87,8 +88,6 @@ def _logout() -> None:
             cookie_controller.remove("session_token")
             time.sleep(0.5)  # クッキー削除の反映を待つ
 
-    for key in ("user_id", "username", "cookie_controller"):
-        if key in st.session_state:
-            del st.session_state[key]
+    reset_user_session_state(st.session_state)
 
     st.rerun()

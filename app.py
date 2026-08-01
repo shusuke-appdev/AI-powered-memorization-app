@@ -7,9 +7,13 @@ AI 暗記カード — メインエントリーポイント
 
 from __future__ import annotations
 
+import logging
+import uuid
+
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
+from application_errors import ApplicationError
 from auth import get_username, validate_session_token
 from database import (
     DatabaseConnectionError,
@@ -23,7 +27,10 @@ from pages.manage_page import render_manage_page
 from pages.review_page import render_review_page
 from pages.sidebar import render_sidebar
 from pages.stats_page import render_stats_page
+from services.session_service import reset_user_session_state
 from styles import apply_base_styles
+
+logger = logging.getLogger(__name__)
 
 # ============ Page Config ============
 
@@ -50,6 +57,7 @@ def check_auth() -> bool:
     if session_token:
         user_id = validate_session_token(session_token)
         if user_id:
+            reset_user_session_state(st.session_state)
             st.session_state.user_id = user_id
             st.session_state.username = get_username(user_id)
             return True
@@ -112,12 +120,24 @@ try:
         show_login_page(cookie_controller)
 except DatabaseConnectionError as e:
     show_database_error(e)
+except ApplicationError as e:
+    st.error(f"⚠️ {e.user_message}")
+    st.info("🔄 内容を確認して、もう一度お試しください。")
 except Exception as e:
     database_error = as_database_connection_error(e)
     if database_error is not None:
         show_database_error(database_error)
     else:
-        st.error(f"予期しないエラーが発生しました: {e}")
+        error_reference = uuid.uuid4().hex[:8]
+        logger.error(
+            "Unhandled application error reference=%s type=%s",
+            error_reference,
+            type(e).__name__,
+        )
+        st.error(
+            "予期しないエラーが発生しました。"
+            f"時間をおいて再試行してください（参照: {error_reference}）。"
+        )
         st.info("🔄 ページを再読み込みするか、サポートにお問い合わせください。")
         if st.button("再読み込み"):
             st.rerun()

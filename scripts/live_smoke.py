@@ -1,12 +1,13 @@
-"""Supabase本番相当接続でサービス層の最小スモークテストを実行する."""
+"""Supabase本番相当接続でサービス層の最小スモークテストを実行する。"""
 
 from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
-
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Barrier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -26,8 +27,9 @@ def _load_local_secrets() -> None:
 
 
 def main() -> None:
-    """ログイン相当、カード作成、復習更新、日次割当、削除を確認する。"""
+    """ログイン、トランザクション保存、復習冪等性、削除を確認する。"""
     _load_local_secrets()
+    from application_errors import PersistenceError
     from auth import (
         MAINTENANCE_USERNAME,
         create_session,
@@ -35,19 +37,18 @@ def main() -> None:
         get_or_create_maintenance_user,
         login_user_direct,
     )
-    from services.review_service import calculate_next_review
     from storage import (
-        add_card,
-        add_source_card,
-        delete_cards_batch,
-        delete_source_card,
+        import_backup_atomic_rpc,
         load_cards,
         load_daily_assignments,
         load_source_cards,
-        mark_daily_assignment_complete,
-        save_daily_assignments,
-        update_card_progress,
+        sync_daily_assignments,
     )
+    from use_cases.card_workflows import (
+        delete_source_bundle,
+        save_source_with_cards,
+    )
+    from use_cases.review_workflows import complete_review
 
     maintenance_user = get_or_create_maintenance_user()
     user_id = maintenance_user["id"]
@@ -61,60 +62,109 @@ def main() -> None:
     delete_session(token)
 
     source_id: str | None = None
-    card_id: str | None = None
     try:
-        source_id = add_source_card(
-            user_id,
-            "__codex_smoke_source__",
-            title="__codex_smoke__",
-            category="その他",
-            card_type="知識",
-        )
-        if not source_id:
-            raise RuntimeError("原文カードを作成できませんでした。")
+        rollback_title = "__codex_rollback__"
+        try:
+            import_backup_atomic_rpc(
+                user_id,
+                source_cards=[
+                    {
+                        "export_id": "rollback-source",
+                        "source_text": "ロールバック確認用原文",
+                        "title": rollback_title,
+                        "category": "民法",
+                        "card_type": "規範",
+                    }
+                ],
+                cards=[
+                    {
+                        "source_export_id": "missing-source",
+                        "question": "ロールバック確認用問題",
+                        "answer": "確認用解答",
+                        "title": rollback_title,
+                        "category": "民法",
+                        "card_type": "規範",
+                        "rank": "B",
+                        "blank_count": 1,
+                    }
+                ],
+                reset_progress=False,
+            )
+        except PersistenceError:
+            pass
+        else:
+            raise RuntimeError("不正インポートが成功扱いになりました。")
 
-        card_id = add_card(
+        rollback_residue = [
+            source
+            for source in load_source_cards(user_id)
+            if source.get("title") == rollback_title
+        ]
+        if rollback_residue:
+            for source in rollback_residue:
+                delete_source_bundle(user_id, str(source["id"]))
+            raise RuntimeError("失敗したインポートの原文が残りました。")
+
+        result = save_source_with_cards(
             user_id,
-            "__codex_smoke_question__",
-            "",
+            source_text="__codex_smoke_source__",
             title="__codex_smoke__",
             category="その他",
-            source_id=source_id,
-            blank_count=0,
             card_type="知識",
-            rank="B",
-            highlighted_keywords="codex",
+            cards=[
+                {
+                    "question": "__codex_smoke_question__",
+                    "answer": "",
+                    "title": "__codex_smoke__",
+                    "category": "その他",
+                    "blank_count": 0,
+                    "card_type": "知識",
+                    "rank": "B",
+                    "highlighted_keywords": "codex",
+                }
+            ],
         )
-        if not card_id:
-            raise RuntimeError("暗記カードを作成できませんでした。")
+        if result.source_count != 1 or result.card_count != 1:
+            raise RuntimeError("原文とカードを一括作成できませんでした。")
+        source_id = result.source_id
+        if not source_id:
+            raise RuntimeError("作成した原文カードIDを取得できませんでした。")
 
         cards = load_cards(user_id)
         source_cards = load_source_cards(user_id)
-        card = next(c for c in cards if str(c["id"]) == str(card_id))
-        if not any(str(s["id"]) == str(source_id) for s in source_cards):
+        if not any(str(s["id"]) == source_id for s in source_cards):
             raise RuntimeError("作成した原文カードを読み取れませんでした。")
-
-        update_card_progress(user_id, card_id, calculate_next_review(4, card))
-        saved = save_daily_assignments(
-            user_id,
-            _SMOKE_ASSIGNMENT_DATE,
-            [str(card_id)],
-            {str(card_id): card},
+        card = next(
+            c
+            for c in cards
+            if str(c.get("source_id")) == source_id
+            and c.get("title") == "__codex_smoke__"
         )
-        if not saved:
-            raise RuntimeError("日次割当を保存できませんでした。")
+        card_id = str(card["id"])
+
+        synced = sync_daily_assignments(user_id, _SMOKE_ASSIGNMENT_DATE, [card_id])
+        if len(synced) != 1:
+            raise RuntimeError("日次割当を同期できませんでした。")
 
         assignments = load_daily_assignments(user_id, _SMOKE_ASSIGNMENT_DATE)
-        if len(assignments) != 1 or str(assignments[0]["card_id"]) != str(card_id):
+        if len(assignments) != 1 or str(assignments[0]["card_id"]) != card_id:
             raise RuntimeError("日次割当を読み取れませんでした。")
 
-        marked = mark_daily_assignment_complete(
-            user_id,
-            _SMOKE_ASSIGNMENT_DATE,
-            str(card_id),
-            quality=4,
-        )
-        if not marked:
+        start_barrier = Barrier(3)
+
+        def submit_review():
+            start_barrier.wait()
+            return complete_review(user_id, _SMOKE_ASSIGNMENT_DATE, card, quality=4)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit_review) for _ in range(2)]
+            start_barrier.wait()
+            outcomes = [future.result() for future in futures]
+
+        statuses = sorted(outcome.status for outcome in outcomes)
+        if statuses != ["already_completed", "applied"]:
+            raise RuntimeError("同時復習送信が原子的・冪等に処理されませんでした。")
+        if not all(outcome.assignment_persisted for outcome in outcomes):
             raise RuntimeError("日次割当を完了済みに更新できませんでした。")
 
         assignments = load_daily_assignments(user_id, _SMOKE_ASSIGNMENT_DATE)
@@ -122,14 +172,13 @@ def main() -> None:
             raise RuntimeError("日次割当の完了状態が保存されていません。")
 
         print(
-            "LIVE_SMOKE_OK: login/session/card/source/progress/"
-            f"daily_assignment/delete path verified with {MAINTENANCE_USERNAME}"
+            "LIVE_SMOKE_OK: login/session/transactional-card/concurrent-review/"
+            "review-idempotency/import-rollback/"
+            f"daily-assignment/delete verified with {MAINTENANCE_USERNAME}"
         )
     finally:
-        if card_id:
-            delete_cards_batch(user_id, [str(card_id)])
         if source_id:
-            delete_source_card(user_id, str(source_id))
+            delete_source_bundle(user_id, source_id)
 
 
 if __name__ == "__main__":

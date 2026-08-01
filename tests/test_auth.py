@@ -1,7 +1,40 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from auth import MAINTENANCE_USERNAME, get_all_users, get_or_create_maintenance_user
+from auth import (
+    MAINTENANCE_USERNAME,
+    get_all_users,
+    get_or_create_maintenance_user,
+    register_user,
+)
+
+
+def test_register_user_rejects_whitespace_only_name_without_db_call() -> None:
+    with patch("auth.get_supabase") as get_supabase:
+        success, message, user_id = register_user("   ")
+
+    assert success is False
+    assert "入力" in message
+    assert user_id is None
+    get_supabase.assert_not_called()
+
+
+def test_register_user_rejects_reserved_maintenance_name_case_insensitively() -> None:
+    with patch("auth.get_supabase") as get_supabase:
+        success, message, user_id = register_user(" CODEX-MAINTENANCE ")
+
+    assert success is False
+    assert "使用できません" in message
+    assert user_id is None
+    get_supabase.assert_not_called()
+
+
+def test_register_user_rejects_name_longer_than_fifty_characters() -> None:
+    success, message, user_id = register_user("a" * 51)
+
+    assert success is False
+    assert "50文字" in message
+    assert user_id is None
 
 
 def test_get_all_users_hides_maintenance_user_by_default() -> None:

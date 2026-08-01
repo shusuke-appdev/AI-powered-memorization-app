@@ -4,9 +4,8 @@
 
 from __future__ import annotations
 
-import math
-import random
 import re
+from typing import Any
 
 from config import BLANKS_PER_CARD
 from services.html_rendering import escape_html
@@ -82,7 +81,7 @@ def merge_adjacent_selections(
 
 def generate_cards_from_selection(
     phrases: list[str], selected_indices: list[int]
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """
     ユーザーが選択した文節のみを穴埋めにしてカードを生成する。
 
@@ -101,9 +100,9 @@ def generate_cards_from_selection(
     groups = merge_adjacent_selections(phrases, selected_indices)
     num_blanks = len(groups)
 
-    cards: list[dict[str, str]] = []
+    cards: list[dict[str, Any]] = []
 
-    def build_card_from_groups(target_groups: list[list[int]]) -> dict[str, str]:
+    def build_card_from_groups(target_groups: list[list[int]]) -> dict[str, Any]:
         """指定されたグループを穴埋めにしてカードを作成"""
         question_parts: list[str] = []
         answers: list[str] = []
@@ -136,31 +135,28 @@ def generate_cards_from_selection(
         if current_group_idx != -1:
             answers.append("".join(current_answer))
 
-        return {"question": "".join(question_parts), "answer": " / ".join(answers)}
+        return {
+            "question": "".join(question_parts),
+            "answer": " / ".join(answers),
+            "blank_count": len(target_groups),
+        }
 
     if num_blanks <= BLANKS_PER_CARD:
         # 穴埋め箇所が5個以下: ユーザー指定の穴埋め箇所のみで1枚生成
         cards.append(build_card_from_groups(groups))
     else:
         # 穴埋め箇所が6個以上: 各カード5箇所ずつ割り当て
-        num_cards = math.ceil(num_blanks / BLANKS_PER_CARD)
         group_indices = list(range(num_blanks))
-        random.shuffle(group_indices)
-
-        for card_idx in range(num_cards):
-            start = card_idx * BLANKS_PER_CARD
+        for start in range(0, num_blanks, BLANKS_PER_CARD):
             end = min(start + BLANKS_PER_CARD, num_blanks)
             card_group_indices = group_indices[start:end]
 
-            # 最後のカードが5箇所未満の場合、他の穴埋め箇所から重複補充
+            # 最後のカードが5箇所未満の場合、先頭側から決定的に重複補充
             if len(card_group_indices) < BLANKS_PER_CARD:
                 other_indices = [
                     gi for gi in group_indices if gi not in card_group_indices
                 ]
-                supplement = random.sample(
-                    other_indices,
-                    min(BLANKS_PER_CARD - len(card_group_indices), len(other_indices)),
-                )
+                supplement = other_indices[: BLANKS_PER_CARD - len(card_group_indices)]
                 card_group_indices = card_group_indices + supplement
 
             card_group_indices_sorted = sorted(card_group_indices)
@@ -180,6 +176,12 @@ def validate_highlight_markers(text: str) -> tuple[bool, str, int]:
     if not contains_highlight_markers(text):
         return True, "ハイライト指定はありません。", 0
 
+    return _validate_markers(text, label="ハイライト")
+
+
+def _validate_markers(text: str, *, label: str) -> tuple[bool, str, int]:
+    """【】マーカーを入れ子・空・片側だけの指定を含めて検証する。"""
+
     in_marker = False
     marker_chars: list[str] = []
     marker_count = 0
@@ -187,7 +189,7 @@ def validate_highlight_markers(text: str) -> tuple[bool, str, int]:
     for char in text:
         if char == HIGHLIGHT_OPEN:
             if in_marker:
-                return False, "ハイライト指定の中に別の【があります。", marker_count
+                return False, f"{label}指定の中に別の【があります。", marker_count
             in_marker = True
             marker_chars = []
             continue
@@ -196,7 +198,7 @@ def validate_highlight_markers(text: str) -> tuple[bool, str, int]:
             if not in_marker:
                 return False, "】に対応する【がありません。", marker_count
             if not "".join(marker_chars).strip():
-                return False, "空のハイライト指定があります。", marker_count
+                return False, f"空の{label}指定があります。", marker_count
             in_marker = False
             marker_count += 1
             marker_chars = []
@@ -208,7 +210,7 @@ def validate_highlight_markers(text: str) -> tuple[bool, str, int]:
     if in_marker:
         return False, "【に対応する】がありません。", marker_count
 
-    return True, f"{marker_count}箇所のハイライトが指定されています。", marker_count
+    return True, f"{marker_count}箇所の{label}が指定されています。", marker_count
 
 
 def extract_highlight_keywords(text: str) -> str:
@@ -275,9 +277,13 @@ def _apply_keyword_highlight(text: str, keywords_input: str) -> str:
 # ============ 旧API互換 ============
 
 
-def parse_blanks_from_text(text: str) -> list[dict[str, str]]:
+def parse_blanks_from_text(text: str) -> list[dict[str, Any]]:
     """【】マーカーからカードを生成（旧方式との互換性のため残す）"""
-    pattern = r"【(.+?)】"
+    is_valid, _message, _count = validate_blank_markers(text)
+    if not is_valid:
+        return []
+
+    pattern = r"【([^【】]+)】"
     matches = list(re.finditer(pattern, text))
 
     if not matches:
@@ -307,21 +313,22 @@ def parse_blanks_from_text(text: str) -> list[dict[str, str]]:
 
 def validate_blank_markers(text: str) -> tuple[bool, str, int]:
     """穴埋め指定の検証（旧方式との互換性）"""
-    pattern = r"【(.+?)】"
-    matches = re.findall(pattern, text)
-
-    if not matches:
+    if not contains_highlight_markers(text):
         return False, "穴埋め箇所が指定されていません。", 0
+    return _validate_markers(text, label="穴埋め")
 
-    return True, f"{len(matches)}箇所の穴埋めが指定されています。", len(matches)
 
-
-def generate_flashcards(text: str) -> list[dict[str, str]] | None:
+def generate_flashcards(text: str) -> list[dict[str, Any]] | None:
     """旧API互換のエントリーポイント"""
     is_valid, _message, _count = validate_blank_markers(text)
     if not is_valid:
         return None
     return parse_blanks_from_text(text)
+
+
+def count_card_blanks(question: str) -> int:
+    """編集後の問題文に残る穴埋めプレースホルダー数を返す。"""
+    return len(re.findall(r"_{3,}", question))
 
 
 def apply_highlight(text: str, keywords_input: str) -> str:

@@ -9,24 +9,27 @@ from typing import Any
 
 import streamlit as st
 
-from config import CARD_TYPES, CATEGORIES, RANK_WEIGHT, RANKS
+from application_errors import ValidationError
+from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANK_WEIGHT, RANKS
 from services.card_service import (
     contains_highlight_markers,
+    count_card_blanks,
     extract_highlight_keywords,
     parse_blanks_from_text,
     validate_highlight_markers,
 )
 from storage import (
     delete_card,
-    delete_cards_batch,
-    delete_source_card,
     load_cards,
     load_source_cards,
     toggle_favorite_by_source_id,
     update_card_content,
-    update_source_card,
 )
-from use_cases.card_workflows import replace_source_cards
+from use_cases.card_workflows import (
+    delete_source_bundle,
+    replace_source_cards,
+    update_source_with_cards,
+)
 
 MANAGE_SORT_OPTIONS = [
     "50音順",
@@ -217,6 +220,10 @@ def _render_source_card_expander(
         type_modified = new_type != sc.get("card_type")
         cat_modified = new_category != category
         rank_modified = any(card.get("rank", "B") != new_rank for card in linked_cards)
+        requires_regeneration = type_modified and (
+            (new_type in BLANK_DISABLED_TYPES)
+            != (sc.get("card_type") in BLANK_DISABLED_TYPES)
+        )
 
         # 紐づき暗記カード
         if linked_cards:
@@ -285,7 +292,7 @@ def _render_source_card_expander(
                 key=f"save_source_{source_id}",
                 type="primary" if has_changes else "secondary",
                 use_container_width=True,
-                disabled=not has_changes,
+                disabled=not has_changes or requires_regeneration,
             ):
                 _save_source_and_cards(
                     user_id,
@@ -302,6 +309,11 @@ def _render_source_card_expander(
                     cat_modified,
                     new_rank,
                     changed_items,
+                )
+
+            if requires_regeneration:
+                st.caption(
+                    "穴埋めあり／なしをまたぐタイプ変更は、下の再生成プレビューから保存してください。"
                 )
 
         with btn_col2:
@@ -324,11 +336,7 @@ def _render_source_card_expander(
             c1, c2, c3 = st.columns([1, 1, 3])
             with c1:
                 if st.button("✓ 削除", key=f"yes_del_all_{source_id}", type="primary"):
-                    # N+1 → バッチ削除に最適化
-                    card_ids = [card["id"] for card in linked_cards]
-                    if card_ids:
-                        delete_cards_batch(user_id, card_ids)
-                    delete_source_card(user_id, source_id)
+                    delete_source_bundle(user_id, source_id)
                     del st.session_state[f"confirm_del_all_{source_id}"]
                     st.success("削除しました")
                     st.rerun()
@@ -348,10 +356,25 @@ def _render_source_card_expander(
             st.session_state.pop(regen_context_key, None)
 
         # 変更した原文からカードを再生成
-        if source_modified and new_type not in ("知識", "類型"):
+        if source_modified or requires_regeneration:
             st.markdown("---")
-            if st.button("✨ 変更した原文からカードを再生成", key=f"regen_{source_id}"):
-                new_cards = parse_blanks_from_text(edited_source)
+            if st.button("✨ 変更内容からカードを再生成", key=f"regen_{source_id}"):
+                if new_type in BLANK_DISABLED_TYPES:
+                    is_valid, message, _count = validate_highlight_markers(
+                        edited_source
+                    )
+                    if not is_valid:
+                        st.error(message)
+                        return
+                    new_cards = [
+                        {
+                            "question": edited_source,
+                            "answer": "",
+                            "blank_count": 0,
+                        }
+                    ]
+                else:
+                    new_cards = parse_blanks_from_text(edited_source)
                 if new_cards:
                     st.session_state[regen_key] = new_cards
                     st.session_state[regen_context_key] = regen_context
@@ -366,19 +389,27 @@ def _render_source_card_expander(
             )
             cards_to_save = []
             for i, c in enumerate(regen_cards):
-                c1, c2 = st.columns(2)
-                with c1:
+                if new_type in BLANK_DISABLED_TYPES:
                     q = st.text_input(
-                        f"新問題 {i + 1}",
+                        f"新本文 {i + 1}",
                         value=c["question"],
                         key=f"regen_q_{source_id}_{i}",
                     )
-                with c2:
-                    a = st.text_input(
-                        f"新答え {i + 1}",
-                        value=c["answer"],
-                        key=f"regen_a_{source_id}_{i}",
-                    )
+                    a = ""
+                else:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        q = st.text_input(
+                            f"新問題 {i + 1}",
+                            value=c["question"],
+                            key=f"regen_q_{source_id}_{i}",
+                        )
+                    with c2:
+                        a = st.text_input(
+                            f"新答え {i + 1}",
+                            value=c["answer"],
+                            key=f"regen_a_{source_id}_{i}",
+                        )
                 cards_to_save.append({"question": q, "answer": a})
 
             if st.button(
@@ -392,23 +423,36 @@ def _render_source_card_expander(
                         "answer": c["answer"],
                         "title": edited_title,
                         "category": new_category,
-                        "blank_count": len(cards_to_save),
+                        "blank_count": (
+                            0
+                            if new_type in BLANK_DISABLED_TYPES
+                            else count_card_blanks(c["question"])
+                        ),
                         "card_type": new_type,
                         "rank": new_rank,
+                        "highlighted_keywords": (
+                            extract_highlight_keywords(c["question"])
+                            if new_type in BLANK_DISABLED_TYPES
+                            else ""
+                        ),
                     }
                     for c in cards_to_save
-                    if c["question"] and c["answer"]
+                    if c["question"]
                 ]
-                replace_source_cards(
-                    user_id,
-                    source_id=source_id,
-                    source_text=edited_source,
-                    title=edited_title,
-                    category=new_category,
-                    card_type=new_type,
-                    old_card_ids=[lc["id"] for lc in linked_cards],
-                    cards=cards_payload,
-                )
+                try:
+                    replace_source_cards(
+                        user_id,
+                        source_id=source_id,
+                        source_text=edited_source,
+                        title=edited_title,
+                        category=new_category,
+                        card_type=new_type,
+                        old_card_ids=[lc["id"] for lc in linked_cards],
+                        cards=cards_payload,
+                    )
+                except ValidationError as exc:
+                    st.warning(exc.user_message)
+                    return
                 st.session_state.pop(regen_key, None)
                 st.session_state.pop(regen_context_key, None)
                 st.success("再生成したカードで上書き保存しました！")
@@ -477,6 +521,7 @@ def _save_source_and_cards(
     changed_items: list[str],
 ) -> None:
     """原文カードと紐づき暗記カードを保存"""
+    del title_modified, source_modified, type_modified, cat_modified
     if new_type in ("知識", "類型"):
         source_is_valid, source_message, _count = validate_highlight_markers(
             edited_source
@@ -485,22 +530,10 @@ def _save_source_and_cards(
             st.warning(f"原文: {source_message}")
             return
 
-    if title_modified or source_modified or type_modified or cat_modified:
-        update_source_card(
-            user_id,
-            source_id,
-            source_text=edited_source if source_modified else None,
-            title=new_title if title_modified else None,
-            category=new_category if cat_modified else None,
-            card_type=new_type if type_modified else None,
-        )
-
-    updated_count = 0
+    cards_payload: list[dict[str, Any]] = []
     for card in linked_cards:
         new_q = st.session_state.get(f"q_{card['id']}", card["question"])
-        c_type = (
-            new_type if type_modified else card.get("card_type", sc.get("card_type"))
-        )
+        c_type = new_type
 
         if c_type in ("知識", "類型"):
             card_is_valid, card_message, _count = validate_highlight_markers(new_q)
@@ -518,27 +551,40 @@ def _save_source_and_cards(
             ans_to_save = new_a
             hl_to_save = card.get("highlighted_keywords", "")
 
-        if (
-            new_q != card["question"]
-            or ans_to_save != card["answer"]
-            or hl_to_save != card.get("highlighted_keywords", "")
-            or new_rank != card.get("rank", "B")
-            or title_modified
-            or type_modified
-            or cat_modified
-        ):
-            update_card_content(
-                user_id,
-                card["id"],
-                new_q,
-                ans_to_save,
-                new_title,
-                new_category,
-                new_type,
-                rank=new_rank,
-                highlighted_keywords=hl_to_save,
-            )
-            updated_count += 1
+        cards_payload.append(
+            {
+                "id": card["id"],
+                "question": new_q,
+                "answer": ans_to_save,
+                "title": new_title,
+                "category": new_category,
+                "card_type": new_type,
+                "rank": new_rank,
+                "blank_count": (
+                    0 if c_type in BLANK_DISABLED_TYPES else count_card_blanks(new_q)
+                ),
+                "highlighted_keywords": hl_to_save,
+                "ease_factor": card.get("ease_factor"),
+                "interval": card.get("interval"),
+                "repetitions": card.get("repetitions"),
+                "next_review": card.get("next_review"),
+                "is_favorite": card.get("is_favorite", False),
+            }
+        )
+
+    try:
+        update_source_with_cards(
+            user_id,
+            source_id=source_id,
+            source_text=edited_source,
+            title=new_title,
+            category=new_category,
+            card_type=new_type,
+            cards=cards_payload,
+        )
+    except ValidationError as exc:
+        st.warning(exc.user_message)
+        return
 
     if changed_items:
         st.success(f"✅ 以下の項目を更新しました: {', '.join(changed_items)}")
@@ -591,6 +637,14 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                 new_a = st.text_input("答え", value=card["answer"])
 
             if st.form_submit_button("✓ 更新"):
+                if (current_type_orphan in BLANK_DISABLED_TYPES) != (
+                    new_type_orphan in BLANK_DISABLED_TYPES
+                ):
+                    st.warning(
+                        "原文なしカードは穴埋めあり／なしを直接変換できません。"
+                        "新しいタイプのカードを作成してから旧カードを削除してください。"
+                    )
+                    return
                 highlighted_keywords = None
                 if new_type_orphan in ("知識", "類型"):
                     is_valid, message, _count = validate_highlight_markers(new_q)
@@ -611,6 +665,11 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     new_cat,
                     card_type=new_type_orphan,
                     highlighted_keywords=highlighted_keywords,
+                    blank_count=(
+                        0
+                        if new_type_orphan in BLANK_DISABLED_TYPES
+                        else count_card_blanks(new_q)
+                    ),
                 )
                 st.success("更新しました")
                 st.rerun()

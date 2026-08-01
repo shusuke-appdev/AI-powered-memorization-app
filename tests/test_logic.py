@@ -7,8 +7,11 @@ import unittest
 
 from services.card_service import (
     apply_highlight,
+    count_card_blanks,
     extract_highlight_keywords,
     generate_cards_from_selection,
+    parse_blanks_from_text,
+    validate_blank_markers,
     validate_highlight_markers,
 )
 from services.review_service import (
@@ -17,6 +20,7 @@ from services.review_service import (
     reconcile_daily_quota,
     select_hybrid_quota,
 )
+from services.time_service import local_date_iso
 
 
 class TestSM2(unittest.TestCase):
@@ -25,7 +29,7 @@ class TestSM2(unittest.TestCase):
         self.assertEqual(state["repetitions"], 0)
         self.assertEqual(state["interval"], 0)
         self.assertEqual(state["ease_factor"], 2.5)
-        self.assertEqual(state["next_review"], datetime.date.today().isoformat())
+        self.assertEqual(state["next_review"], local_date_iso())
 
     def test_first_correct_review(self) -> None:
         card = get_initial_card_state()
@@ -183,6 +187,25 @@ class TestCardGeneration(unittest.TestCase):
         self.assertEqual(cards[0]["question"].count("______"), 5)
         # 2枚目も5箇所（残り1箇所＋他から4箇所補充で計5箇所）
         self.assertEqual(cards[1]["question"].count("______"), 5)
+        self.assertEqual([card["blank_count"] for card in cards], [5, 5])
+
+    def test_generation_is_deterministic_for_more_than_five_blanks(self) -> None:
+        phrases = [str(i) for i in range(20)]
+        selected = [0, 3, 6, 9, 12, 15]
+
+        first = generate_cards_from_selection(phrases, selected)
+        second = generate_cards_from_selection(phrases, selected)
+
+        self.assertEqual(first, second)
+
+    def test_blank_parser_rejects_nested_empty_and_unclosed_markers(self) -> None:
+        for text in ("A【B【C】", "A【】B", "A【B", "A】B"):
+            is_valid, _message, _count = validate_blank_markers(text)
+            self.assertFalse(is_valid)
+            self.assertEqual(parse_blanks_from_text(text), [])
+
+    def test_count_card_blanks_uses_edited_question(self) -> None:
+        self.assertEqual(count_card_blanks("A______B___C"), 2)
 
     def test_twelve_blanks_three_cards(self) -> None:
         """12箇所 → 3カード、各5箇所（最後のカードは重複補充）"""

@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from application_errors import ValidationError
 from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANKS
 from services.card_service import (
     apply_highlight,
+    count_card_blanks,
     extract_highlight_keywords,
     parse_blanks_from_text,
+    validate_blank_markers,
     validate_highlight_markers,
 )
 from use_cases.card_workflows import save_source_with_cards
@@ -218,29 +221,37 @@ def _render_no_blank_flow(
     if st.button("💾 保存", type="primary", key="save_no_blank_btn"):
         if not source_text:
             st.warning("テキストを入力してください。")
+        elif selected_category not in CATEGORIES:
+            st.warning("カテゴリを選択してください。")
+        elif selected_type not in CARD_TYPES:
+            st.warning("カードタイプを選択してください。")
         elif not marker_is_valid:
             st.warning(marker_message)
         else:
             highlighted_keywords = extract_highlight_keywords(source_text)
-            save_source_with_cards(
-                user_id,
-                source_text=source_text,
-                title=card_title,
-                category=selected_category,
-                card_type=selected_type,
-                cards=[
-                    {
-                        "question": source_text,
-                        "answer": "",
-                        "title": card_title,
-                        "category": selected_category,
-                        "blank_count": 0,
-                        "card_type": selected_type,
-                        "rank": selected_rank,
-                        "highlighted_keywords": highlighted_keywords,
-                    }
-                ],
-            )
+            try:
+                save_source_with_cards(
+                    user_id,
+                    source_text=source_text,
+                    title=card_title,
+                    category=selected_category,
+                    card_type=selected_type,
+                    cards=[
+                        {
+                            "question": source_text,
+                            "answer": "",
+                            "title": card_title,
+                            "category": selected_category,
+                            "blank_count": 0,
+                            "card_type": selected_type,
+                            "rank": selected_rank,
+                            "highlighted_keywords": highlighted_keywords,
+                        }
+                    ],
+                )
+            except ValidationError as exc:
+                st.warning(exc.user_message)
+                return
             st.success("保存しました！")
             _clear_all_state()
             st.rerun()
@@ -311,9 +322,13 @@ def _render_manual_generate(source_text: str) -> None:
     if st.button("✨ カード生成", type="primary", key="manual_generate_btn"):
         if not source_text:
             st.warning("テキストを入力してください。")
-        elif "【" not in source_text or "】" not in source_text:
-            st.warning("【】で穴埋め箇所を指定してください。例: 民法【709条】は...")
         else:
+            marker_is_valid, marker_message, _count = validate_blank_markers(
+                source_text
+            )
+            if not marker_is_valid:
+                st.warning(marker_message)
+                return
             cards = parse_blanks_from_text(source_text)
             if cards:
                 st.session_state.generated_cards = cards
@@ -362,29 +377,31 @@ def _render_save_form(
         if st.form_submit_button("💾 デッキに保存", type="primary"):
             original_text = st.session_state.get("add_card_text", "")
             cards_payload = []
-            blank_count = len(cards_to_save)
             for card in cards_to_save:
-                if card["question"] and card["answer"]:
-                    cards_payload.append(
-                        {
-                            "question": card["question"],
-                            "answer": card["answer"],
-                            "title": card_title,
-                            "category": selected_category,
-                            "blank_count": blank_count,
-                            "card_type": selected_type,
-                            "rank": selected_rank,
-                        }
-                    )
+                cards_payload.append(
+                    {
+                        "question": card["question"],
+                        "answer": card["answer"],
+                        "title": card_title,
+                        "category": selected_category,
+                        "blank_count": count_card_blanks(card["question"]),
+                        "card_type": selected_type,
+                        "rank": selected_rank,
+                    }
+                )
 
-            result = save_source_with_cards(
-                user_id,
-                source_text=original_text,
-                title=card_title,
-                category=selected_category,
-                card_type=selected_type,
-                cards=cards_payload,
-            )
+            try:
+                result = save_source_with_cards(
+                    user_id,
+                    source_text=original_text,
+                    title=card_title,
+                    category=selected_category,
+                    card_type=selected_type,
+                    cards=cards_payload,
+                )
+            except ValidationError as exc:
+                st.warning(exc.user_message)
+                return
 
             st.success(
                 f"{result.card_count} 枚のカードを保存しました！（原文カードも保存済み）"

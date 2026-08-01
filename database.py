@@ -23,7 +23,7 @@ class DatabaseConnectionError(Exception):
 def as_database_connection_error(
     error: BaseException,
 ) -> DatabaseConnectionError | None:
-    """DNS解決失敗を利用者向けのデータベース接続エラーへ変換する。"""
+    """接続面の失敗だけを安全な利用者向けエラーへ変換する。"""
     current: BaseException | None = error
     seen: set[int] = set()
 
@@ -34,6 +34,26 @@ def as_database_connection_error(
                 "データベースの接続先を確認できません。"
                 "Supabaseプロジェクトが停止している可能性があります。"
                 "しばらく待ってから再試行してください。"
+            )
+        message = str(current).lower()
+        if any(
+            marker in message
+            for marker in (
+                "timed out",
+                "timeout",
+                "connection refused",
+                "connection reset",
+                "network is unreachable",
+                "temporary failure in name resolution",
+            )
+        ):
+            return DatabaseConnectionError(
+                "データベースに接続できません。"
+                "インターネット接続とSupabaseの稼働状態を確認してください。"
+            )
+        if any(marker in message for marker in ("unauthorized", "401", "403")):
+            return DatabaseConnectionError(
+                "データベースの認証または権限を確認できません。運用設定を確認してください。"
             )
         current = current.__cause__ or current.__context__
 
@@ -120,7 +140,9 @@ def _raise_connection_error(last_error: Exception | None) -> Any:
             "データベースの認証に失敗しました。Supabase接続キーを確認してください。"
         )
     else:
-        raise DatabaseConnectionError(f"データベースエラー: {last_error}")
+        raise DatabaseConnectionError(
+            "データベース接続の初期化に失敗しました。運用設定を確認してください。"
+        )
 
 
 def reset_connection() -> None:

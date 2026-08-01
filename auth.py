@@ -11,11 +11,14 @@ from typing import Any
 
 import streamlit as st
 
+from application_errors import RecordNotFoundError
 from database import get_supabase
 
 SESSION_EXPIRY_DAYS: int = 30
 DEFAULT_DAILY_QUOTA: int = 15
 MAINTENANCE_USERNAME: str = "codex-maintenance"
+MIN_USERNAME_LENGTH: int = 2
+MAX_USERNAME_LENGTH: int = 50
 
 
 def _generate_session_token() -> str:
@@ -35,11 +38,16 @@ def register_user(
     Returns:
         tuple: (success, message, user_id)
     """
+    username = username.strip()
     if not username:
         return False, "ユーザー名を入力してください", None
 
-    if len(username) < 2:
+    if len(username) < MIN_USERNAME_LENGTH:
         return False, "ユーザー名は2文字以上で入力してください", None
+    if len(username) > MAX_USERNAME_LENGTH:
+        return False, "ユーザー名は50文字以内で入力してください", None
+    if username.casefold() == MAINTENANCE_USERNAME.casefold():
+        return False, "このユーザー名は使用できません", None
 
     supabase = get_supabase()
 
@@ -168,11 +176,14 @@ def update_daily_quota_limit(user_id: str, limit: int) -> bool:
         supabase.table("users")
         .update({"daily_quota": limit})
         .eq("id", user_id)
+        .select("id")
         .execute()
     )
 
+    if not result.data:
+        raise RecordNotFoundError("ユーザーのノルマ設定を更新できませんでした。")
     st.session_state[f"daily_quota_{user_id}"] = limit
-    return bool(result.data)
+    return True
 
 
 # ============ セッション管理 ============

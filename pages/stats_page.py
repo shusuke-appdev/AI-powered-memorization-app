@@ -12,6 +12,7 @@ import plotly.express as px
 import streamlit as st
 
 from export_import import (
+    build_import_preview,
     export_cards_csv,
     export_cards_json,
     import_cards_csv,
@@ -203,20 +204,43 @@ def _render_export_import_ui(
             )
 
         if uploaded_file is not None:
-            file_content = uploaded_file.read().decode("utf-8")
+            try:
+                file_content = uploaded_file.getvalue().decode("utf-8")
+            except UnicodeDecodeError:
+                st.error("UTF-8形式のファイルを選択してください。")
+                return
             file_type = uploaded_file.name.split(".")[-1].lower()
 
-            if st.button("📤 インポート実行", type="primary", use_container_width=True):
-                if file_type == "json":
-                    result = import_cards_json(file_content, cards, duplicate_action)
-                else:
-                    result = import_cards_csv(
-                        file_content, cards, duplicate_action, reset_progress
-                    )
+            if file_type == "json":
+                result = import_cards_json(
+                    file_content,
+                    cards,
+                    duplicate_action,
+                    reset_progress=reset_progress,
+                )
+            else:
+                result = import_cards_csv(
+                    file_content, cards, duplicate_action, reset_progress
+                )
 
-                if result["error"]:
-                    st.error(result["error"])
-                else:
+            preview = build_import_preview(result)
+            st.markdown("#### インポート内容の確認")
+            preview_col1, preview_col2, preview_col3 = st.columns(3)
+            preview_col1.metric("原文カード", preview.source_count)
+            preview_col2.metric("暗記カード", preview.card_count)
+            preview_col3.metric("重複スキップ", preview.skipped_count)
+            for warning in preview.warnings:
+                st.info(warning)
+            for error in preview.errors:
+                st.error(error)
+
+            if preview.can_import:
+                if st.button(
+                    "📤 この内容でインポート",
+                    type="primary",
+                    use_container_width=True,
+                    key="confirm_import",
+                ):
                     import_summary = import_backup_payload(user_id, result)
                     st.success(
                         f"✅ {import_summary.card_count}枚のカードをインポートしました！"

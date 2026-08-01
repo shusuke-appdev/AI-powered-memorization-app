@@ -21,7 +21,7 @@
 
 ## 技術スタック
 
-- Python 3.10 以上を想定
+- Python 3.12
 - Streamlit
 - Supabase Python client
 - PostgreSQL on Supabase
@@ -52,7 +52,7 @@ SUPABASE_KEY = "eyJ..."
 app.py                     Streamlitアプリの入口、認証判定、タブ構成
 auth.py                    ユーザー、ノルマ、セッション管理
 database.py                Supabase接続と接続エラー処理
-storage.py                 cards / source_cards のCRUD
+storage.py                 単一行CRUDとトランザクションRPC呼び出し
 components.py              聞き流し用HTML/JavaScriptコンポーネント
 config.py                  カテゴリ、カードタイプ、ランク、アルゴリズム定数
 export_import.py           JSON/CSVの変換ロジック
@@ -66,7 +66,9 @@ styles/                    CSS
 tests/                     ロジックテスト
 .github/workflows/ci.yml   ruff / pytest のCI
 scripts/live_smoke.py      Supabase接続のサービス層スモークテスト
-migration_*.sql            既存DBへの差分SQL
+scripts/backup_user_data.py 秘密情報を除いた移行前論理バックアップ
+supabase/migrations/       Supabase CLI管理の差分マイグレーション
+migration_*.sql            CLI移行前から存在する旧差分SQL（再適用しない）
 ```
 
 ## データモデル概要
