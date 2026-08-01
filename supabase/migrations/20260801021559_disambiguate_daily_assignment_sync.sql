@@ -108,3 +108,5 @@ revoke execute on function public.sync_daily_assignments(uuid, date, uuid[])
   from public, anon, authenticated;
 grant execute on function public.sync_daily_assignments(uuid, date, uuid[])
   to service_role;
+
+;

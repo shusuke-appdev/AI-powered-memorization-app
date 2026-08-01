@@ -9,3 +9,5 @@ create index daily_assignments_card_user_idx
 create index daily_assignments_source_user_idx
   on public.daily_assignments (source_id, user_id)
   where source_id is not null;
+
+;

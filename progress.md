@@ -2,6 +2,13 @@
 
 ## 最終更新: 2026-08-01
 
+## 継続中
+
+### Supabase CLI基準化とFreeプラン用バックアップ（2026-08-01）
+- **完了**: Supabase CLI 2.111.0の対話ログインとproject `zozsikyinpasapuxjbtg` のlinkを完了。`migration fetch` 後、ローカル・リモート8件のmigration versionが完全一致することを `migration list --linked` で確認した。
+- **バックアップ方針**: 対象organizationはFreeプランのため、プラットフォーム管理の日次バックアップ一覧は提供対象外。既存のアプリ用論理バックアップに加え、公式CLI `db dump` でschema/dataを保存する方針とした。
+- **現在の停止点**: Docker Desktop 4.84.0はインストール済みだが、AMD Ryzen 7 5700Xの `VirtualizationFirmwareEnabled` がFalseで起動できない。MSI MAG B550 TOMAHAWKのBIOSで `SVM Mode` を有効化し、再起動後にWSL 2を導入して `db pull` / `db dump` を完了する。
+
 ## 完了済み
 
 ### 全コードレビュー是正とトランザクション境界の導入（2026-08-01）

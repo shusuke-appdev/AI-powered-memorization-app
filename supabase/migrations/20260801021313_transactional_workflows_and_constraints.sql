@@ -161,7 +161,7 @@ begin
   from unnest(v_final_ids) with ordinality as requested(requested_id, ordinality)
   join public.cards c
     on c.id = requested.requested_id and c.user_id = p_user_id
-  on conflict on constraint daily_assignments_user_id_assignment_date_card_id_key
+  on conflict (user_id, assignment_date, card_id)
   do update set
     source_id = excluded.source_id,
     position = excluded.position;
@@ -570,3 +570,5 @@ grant execute on function public.delete_source_bundle(uuid, uuid)
   to service_role;
 grant execute on function public.import_backup_atomic(uuid, jsonb, jsonb, boolean)
   to service_role;
+
+;
