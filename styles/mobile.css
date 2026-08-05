@@ -4,4 +4,19 @@
     .flashcard-question { font-size: 18px; padding-top: 45px; }
     .flashcard-title { font-size: 16px; }
     .stButton button { min-height: 48px; font-size: 16px; }
+
+    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] {
+        overflow-x: auto;
+    }
+
+    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] {
+        flex: 0 0 auto;
+        min-height: 48px;
+        padding: 10px 14px !important;
+        white-space: nowrap;
+    }
+
+    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] [data-testid="stMarkdownContainer"] p {
+        font-size: 16px !important;
+    }
 }

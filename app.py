@@ -80,24 +80,31 @@ def show_main_app() -> None:
     st.title("🧠 AI 暗記カード")
 
     # Tab Navigation
-    tab1, tab2, tab5, tab3, tab4 = st.tabs(
-        ["📚 本日のノルマ", "📝 カードを追加", "🎧 聞き流し", "🗂️ カード管理", "📊 統計"]
-    )
+    with st.container(key="main_navigation"):
+        tab1, tab2, tab5, tab3, tab4 = st.tabs(
+            [
+                "📚 本日のノルマ",
+                "📝 カードを追加",
+                "🎧 聞き流し",
+                "🗂️ カード管理",
+                "📊 統計",
+            ]
+        )
 
-    with tab1:
-        render_review_page(user_id)
+        with tab1:
+            render_review_page(user_id)
 
-    with tab2:
-        render_add_card_page(user_id)
+        with tab2:
+            render_add_card_page(user_id)
 
-    with tab5:
-        render_listen_page(user_id)
+        with tab5:
+            render_listen_page(user_id)
 
-    with tab3:
-        render_manage_page(user_id)
+        with tab3:
+            render_manage_page(user_id)
 
-    with tab4:
-        render_stats_page(user_id)
+        with tab4:
+            render_stats_page(user_id)
 
 
 def show_database_error(error: DatabaseConnectionError) -> None:

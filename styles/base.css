@@ -209,7 +209,6 @@ html, body, [class*="css"] {
 }
 
 .stTabs [data-baseweb="tab"] {
-    font-size: 24px;
     font-weight: 700;
     padding: 20px 40px;
     background-color: #f8f9fa;
@@ -221,17 +220,30 @@ html, body, [class*="css"] {
 }
 
 .stTabs [data-baseweb="tab"]:hover {
-    background-color: #e5e7eb;
+    background-color: transparent;
     color: #1f2937;
 }
 
 .stTabs [aria-selected="true"] {
-    background-color: #64748b;
-    color: white;
+    background-color: transparent;
+    color: #1f2937;
 }
 
 .stTabs [data-baseweb="tab-highlight"] {
-    display: none;
+    display: block;
+}
+
+/* 上部のページメニューだけを大きくする */
+.st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] {
+    min-height: 52px;
+    padding: 12px 20px !important;
+}
+
+.st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] [data-testid="stMarkdownContainer"] p {
+    font-size: 20px !important;
+    font-weight: 700;
+    line-height: 1.4;
+    margin: 0;
 }
 
 /* ============ Login ============ */

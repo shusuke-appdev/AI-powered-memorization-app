@@ -235,9 +235,6 @@ section[data-testid="stSidebar"],
 }
 .stTabs [aria-selected="true"] {
     color: #f0f0f5 !important;
-    background-color: #2a2a4a !important;
-}
-.stTabs [data-baseweb="tab-highlight"] {
     background-color: transparent !important;
 }
 
