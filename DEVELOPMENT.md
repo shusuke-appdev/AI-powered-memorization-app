@@ -163,8 +163,10 @@ py -3.12 -m venv .venv
 - Supabase DashboardのSecurity Advisorで、Data APIに公開されているテーブルとRLS警告を定期確認する。
 - migration適用後は、`scripts/live_smoke.py` で一時データの作成・割当同期・復習二重送信・削除と残骸ゼロを確認する。
 
-GitHub Actions の `Health Check` workflow は、3日に1回と手動実行時に
-`scripts/health_check.py` を実行します。
+GitHub Actions の `Health Check` workflow は、UTCの0時・8時・16時台
+（JSTの1時17分・9時17分・17時17分ごろ）と手動実行時に
+`scripts/health_check.py` を実行します。1日3回の読み取りはFree Planの
+自動停止を避けるためのbest-effortであり、停止しないことを保証するものではありません。
 
 - GitHub repository secrets に `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
 - `GH_TOKEN` は workflow 内で `${{ github.token }}` を使うため、手動設定しない。
@@ -174,5 +176,6 @@ GitHub Actions の `Health Check` workflow は、3日に1回と手動実行時�
 - `Supabase の読み取り確認に失敗` はキー権限、RLS/GRANT、テーブル到達性を確認する。
 - `GitHub CLI/API` の失敗はGitHub Actions runner、`github.token` 権限、またはGitHub側障害を切り分ける。
 
-Supabase Free Planでは低活動プロジェクトが停止されることがあります。定期ヘルスチェックは
-早期検知と軽減のためのbest-effortです。停止を保証付きで避ける必要がある場合は、有料Planを検討してください。
+Supabase Free Planでは低活動プロジェクトが停止されることがあります。定期ヘルスチェックが
+失敗した場合もエラーを抑制せず、プロジェクト状態と接続障害を確認します。停止を保証付きで
+避ける必要がある場合は、有料Planを検討してください。

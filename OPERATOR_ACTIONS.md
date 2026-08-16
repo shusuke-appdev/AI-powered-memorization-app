@@ -7,6 +7,7 @@
 - [ ] Streamlit Cloud または実行環境で `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
 - [ ] GitHub repository secrets に `SUPABASE_URL` と `SUPABASE_KEY` を設定する。
 - [ ] GitHub Actions の `Health Check` workflow を手動実行し、Supabase読み取りとGitHub CLI/API確認が通ることを確認する。
+- [x] `Health Check` を1日3回の読み取りに変更し、Free Planの自動停止をbest-effortで軽減する。停止回避は保証されないため、失敗時の通知は抑制しない。
 - [ ] パスワード認証やGemini APIキーに関する古いSecretsが残っていれば削除する。
 - [ ] ログイン画面のユーザー一覧に、本番で使うユーザーだけが表示されるように整理する。
 - [x] Python実行環境で `ruff format --check .`、`ruff check .`、`pytest tests -p no:cacheprovider -q` を実行できる状態にする。

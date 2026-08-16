@@ -3,7 +3,7 @@ name: Health Check
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 21 */3 * *"
+    - cron: "17 */8 * * *"
 
 permissions:
   contents: read
