@@ -1,12 +1,18 @@
 # Progress — AI暗記カードアプリ
 
-## 最終更新: 2026-08-01
+## 最終更新: 2026-08-16
 
 ## 継続中
 
 - なし
 
 ## 完了済み
+
+### Supabase復元とHealth Check頻度変更（2026-08-16）
+- **障害原因と復元**: 2026-08-13のGitHub Actions失敗は、repository secrets不足ではなく、Free PlanのSupabaseプロジェクトが `INACTIVE` となりDNS解決できなかったことが原因。project `zozsikyinpasapuxjbtg` を復元し、`ACTIVE_HEALTHY` とSupabase読み取り成功を確認した。
+- **自動停止の軽減**: `.github/workflows/health.yml` の定期実行を3日に1回から8時間ごと（1日3回）へ変更。読み取りはFree Planの自動停止を避けるためのbest-effortであり、停止回避を保証せず、接続失敗も抑制しない。
+- **運用文書**: `DEVELOPMENT.md` と `OPERATOR_ACTIONS.md` にJSTの実行時刻、保証範囲、失敗時の扱いを反映した。既存の `workflow_dispatch`、repository secrets名、読み取り専用チェックは維持した。
+- **検証**: ローカルの `scripts/health_check.py` と `scripts/live_smoke.py` が成功。`scripts/check.py` は依存整合性、compileall、Ruff、pytest 76件がすべて成功。GitHub Actionsの手動run `31926236265` でもSupabase DNS・読み取り・GitHub CLI/API確認がすべて成功した。
 
 ### Supabase CLI基準化とFreeプラン用バックアップ（2026-08-01）
 - **実行環境**: BIOSのSVM有効化後、Windows側で `VirtualizationFirmwareEnabled=True` を確認。WSL 2.7.11.0とDocker Desktop 4.84.0（Engine 29.6.2）を導入し、Supabase CLIが必要とするDocker実行環境を復旧した。
