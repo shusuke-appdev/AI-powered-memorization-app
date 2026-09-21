@@ -20,14 +20,12 @@ from database import (
     as_database_connection_error,
     reset_connection,
 )
-from pages.add_card_page import render_add_card_page
-from pages.listen_page import render_listen_page
-from pages.login_page import show_login_page
-from pages.manage_page import render_manage_page
-from pages.review_page import render_review_page
+from pages.navigation import build_authenticated_pages, build_login_pages
 from pages.sidebar import render_sidebar
-from pages.stats_page import render_stats_page
-from services.session_service import reset_user_session_state
+from services.session_service import (
+    flush_pending_cookie_action,
+    reset_user_session_state,
+)
 from styles import apply_base_styles
 
 logger = logging.getLogger(__name__)
@@ -40,6 +38,7 @@ st.set_page_config(page_title="AI 暗記カード", page_icon="🧠", layout="wi
 if "cookie_controller" not in st.session_state:
     st.session_state.cookie_controller = CookieController()
 cookie_controller = st.session_state.cookie_controller
+flush_pending_cookie_action(st.session_state, cookie_controller)
 
 # ベーススタイルを適用
 apply_base_styles()
@@ -50,6 +49,8 @@ apply_base_styles()
 
 def check_auth() -> bool:
     """認証状態をチェック"""
+    if st.session_state.pop("_force_logged_out_once", False):
+        return False
     if "user_id" in st.session_state and st.session_state.user_id:
         return True
 
@@ -76,35 +77,7 @@ def show_main_app() -> None:
     # サイドバー
     render_sidebar(user_id, username)
 
-    # タイトル
-    st.title("🧠 AI 暗記カード")
-
-    # Tab Navigation
-    with st.container(key="main_navigation"):
-        tab1, tab2, tab5, tab3, tab4 = st.tabs(
-            [
-                "📚 本日のノルマ",
-                "📝 カードを追加",
-                "🎧 聞き流し",
-                "🗂️ カード管理",
-                "📊 統計",
-            ]
-        )
-
-        with tab1:
-            render_review_page(user_id)
-
-        with tab2:
-            render_add_card_page(user_id)
-
-        with tab5:
-            render_listen_page(user_id)
-
-        with tab3:
-            render_manage_page(user_id)
-
-        with tab4:
-            render_stats_page(user_id)
+    st.navigation(build_authenticated_pages(user_id), position="top").run()
 
 
 def show_database_error(error: DatabaseConnectionError) -> None:
@@ -124,7 +97,7 @@ try:
     if check_auth():
         show_main_app()
     else:
-        show_login_page(cookie_controller)
+        st.navigation(build_login_pages(), position="hidden").run()
 except DatabaseConnectionError as e:
     show_database_error(e)
 except ApplicationError as e:

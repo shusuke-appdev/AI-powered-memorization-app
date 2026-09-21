@@ -34,6 +34,7 @@ _SK_SHOW_ANSWER = "show_answer"
 _SK_SOURCE_REVIEW_INDEX = "source_review_index"
 
 
+@st.fragment
 def render_review_page(user_id: str) -> None:
     """本日のノルマタブを表示"""
     st.title("本日のノルマ")
@@ -126,9 +127,9 @@ def _render_completion(
     """ノルマ完了時の表示"""
     st.markdown(
         """
-    <div style="text-align: center; padding: 50px;">
+    <div class="completion-panel">
         <h2>🎉 本日のノルマ完了！</h2>
-        <p style="color: #6b7280;">今日のノルマは終了しました。お疲れ様でした！</p>
+        <p class="muted-copy">今日のノルマは終了しました。お疲れ様でした！</p>
     </div>
     """,
         unsafe_allow_html=True,
@@ -159,9 +160,7 @@ def _render_source_review(
 
     if not source_cards:
         st.info("原文カードが見つかりませんでした。")
-        if st.button("クリア"):
-            st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
-            st.rerun()
+        st.button("クリア", on_click=_finish_source_review)
         return
 
     if _SK_SOURCE_REVIEW_INDEX not in st.session_state:
@@ -208,31 +207,44 @@ def _render_source_review(
 
     with nav_col1:
         fav_label = "⭐ 解除" if is_source_fav else "☆ 登録"
-        if st.button(
+        st.button(
             fav_label,
             key=f"source_fav_{current_source['id']}",
-            use_container_width=True,
-        ):
-            toggle_favorite_by_source_id(
-                user_id, current_source["id"], not is_source_fav
-            )
-            st.rerun()
+            width="stretch",
+            on_click=toggle_favorite_by_source_id,
+            args=(user_id, current_source["id"], not is_source_fav),
+        )
 
     with nav_col2:
-        if st.button("✓ 復習を終了", type="primary", use_container_width=True):
-            st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
-            st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
-            st.rerun()
+        st.button(
+            "✓ 復習を終了",
+            type="primary",
+            width="stretch",
+            on_click=_finish_source_review,
+        )
 
     with nav_col3:
         if st.session_state[_SK_SOURCE_REVIEW_INDEX] < len(source_cards) - 1:
-            if st.button("次へ ▶", use_container_width=True):
-                st.session_state[_SK_SOURCE_REVIEW_INDEX] += 1
-                st.rerun()
+            st.button(
+                "次へ ▶", width="stretch", on_click=_move_source_review, args=(1,)
+            )
         elif st.session_state[_SK_SOURCE_REVIEW_INDEX] > 0:
-            if st.button("◀ 前へ", use_container_width=True):
-                st.session_state[_SK_SOURCE_REVIEW_INDEX] -= 1
-                st.rerun()
+            st.button(
+                "◀ 前へ", width="stretch", on_click=_move_source_review, args=(-1,)
+            )
+
+
+def _finish_source_review() -> None:
+    st.session_state[_SK_REVIEWED_SOURCE_IDS] = []
+    st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
+
+
+def _move_source_review(offset: int) -> None:
+    st.session_state[_SK_SOURCE_REVIEW_INDEX] += offset
+
+
+def _show_answer() -> None:
+    st.session_state[_SK_SHOW_ANSWER] = True
 
 
 def _render_study_card(
@@ -303,29 +315,53 @@ def _render_study_card(
 
     # ボタン
     if not show_eval_buttons:
-        if st.button("答えを見る", type="primary", use_container_width=True):
-            st.session_state[_SK_SHOW_ANSWER] = True
-            st.rerun()
+        st.button(
+            "答えを見る",
+            type="primary",
+            width="stretch",
+            on_click=_show_answer,
+        )
     else:
         st.markdown(
-            "<div style='text-align: center; margin-bottom: 10px; color: #6b7280;'>どれくらい覚えていましたか？</div>",
+            "<div class='muted-copy' style='text-align: center; margin-bottom: 10px;'>どれくらい覚えていましたか？</div>",
             unsafe_allow_html=True,
         )
 
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            if st.button("忘れた (0)", use_container_width=True):
-                _process_review(user_id, current_card, quality=0)
+            st.button(
+                "忘れた (0)",
+                width="stretch",
+                on_click=_process_review,
+                args=(user_id, current_card),
+                kwargs={"quality": 0},
+            )
         with col2:
-            if st.button("難しい (3)", use_container_width=True):
-                _process_review(user_id, current_card, quality=3)
+            st.button(
+                "難しい (3)",
+                width="stretch",
+                on_click=_process_review,
+                args=(user_id, current_card),
+                kwargs={"quality": 3},
+            )
         with col3:
-            if st.button("普通 (4)", use_container_width=True):
-                _process_review(user_id, current_card, quality=4)
+            st.button(
+                "普通 (4)",
+                width="stretch",
+                on_click=_process_review,
+                args=(user_id, current_card),
+                kwargs={"quality": 4},
+            )
         with col4:
-            if st.button("簡単 (5)", type="primary", use_container_width=True):
-                _process_review(user_id, current_card, quality=5)
+            st.button(
+                "簡単 (5)",
+                type="primary",
+                width="stretch",
+                on_click=_process_review,
+                args=(user_id, current_card),
+                kwargs={"quality": 5},
+            )
 
 
 def _process_review(user_id: str, card: dict[str, Any], *, quality: int) -> None:
@@ -349,4 +385,3 @@ def _process_review(user_id: str, card: dict[str, Any], *, quality: int) -> None
             st.session_state[_SK_REVIEWED_SOURCE_IDS].append(source_id)
 
     st.session_state[_SK_SHOW_ANSWER] = False
-    st.rerun()

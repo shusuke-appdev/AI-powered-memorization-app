@@ -5,11 +5,43 @@ import pytest
 
 from application_errors import PersistenceError, RecordNotFoundError
 from storage import (
+    clear_cards_cache,
+    clear_source_cards_cache,
     get_source_cards_by_ids,
     import_backup_atomic_rpc,
+    load_cards_by_category,
+    load_source_cards_by_category,
     save_source_bundle_rpc,
     update_card_progress,
 )
+
+
+@pytest.mark.parametrize(
+    ("loader", "clear_cache", "table_name"),
+    [
+        (load_cards_by_category, clear_cards_cache, "cards"),
+        (load_source_cards_by_category, clear_source_cards_cache, "source_cards"),
+    ],
+)
+def test_category_loaders_filter_at_database(
+    loader, clear_cache, table_name: str
+) -> None:
+    query = Mock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.order.return_value = query
+    query.range.return_value = query
+    query.execute.side_effect = [SimpleNamespace(data=[])]
+    supabase = Mock()
+    supabase.table.return_value = query
+    clear_cache()
+
+    with patch("storage.get_supabase", return_value=supabase):
+        assert loader("user-a", "民法") == []
+
+    supabase.table.assert_called_once_with(table_name)
+    assert query.eq.call_args_list[0].args == ("user_id", "user-a")
+    assert query.eq.call_args_list[1].args == ("category", "民法")
 
 
 def test_source_batch_read_is_scoped_to_user() -> None:

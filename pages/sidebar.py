@@ -7,8 +7,7 @@ from __future__ import annotations
 import streamlit as st
 
 from auth import get_daily_quota_limit, update_daily_quota_limit
-from services.session_service import reset_user_session_state
-from styles import apply_dark_mode_styles
+from services.session_service import queue_cookie_remove, reset_user_session_state
 
 
 def render_sidebar(user_id: str, username: str) -> None:
@@ -16,40 +15,24 @@ def render_sidebar(user_id: str, username: str) -> None:
     with st.sidebar:
         st.markdown(f"### 👤 {username} さん")
 
-        _render_dark_mode_toggle()
-        st.markdown("---")
         _render_quota_section(user_id)
 
         st.markdown("---")
-        if st.button(
+        st.button(
             "🚪 ログアウト",
-            use_container_width=True,
+            width="stretch",
             key="sidebar_logout",
             type="primary",
-        ):
-            _logout()
+            on_click=_logout,
+        )
 
 
-def _render_dark_mode_toggle() -> None:
-    """ダークモードトグル"""
-    if "dark_mode" not in st.session_state:
-        st.session_state.dark_mode = False
-
-    if st.session_state.dark_mode:
-        if st.button(
-            "☀️ ライトモードに切替", key="theme_toggle", use_container_width=True
-        ):
-            st.session_state.dark_mode = False
-            st.rerun()
-    else:
-        if st.button(
-            "🌙 ダークモードに切替", key="theme_toggle", use_container_width=True
-        ):
-            st.session_state.dark_mode = True
-            st.rerun()
-
-    if st.session_state.dark_mode:
-        apply_dark_mode_styles()
+def _update_quota(user_id: str, previous_quota: int) -> None:
+    """ノルマ変更をウィジェットの標準更新内で反映する。"""
+    new_quota = int(st.session_state.sidebar_quota)
+    if new_quota != previous_quota:
+        update_daily_quota_limit(user_id, new_quota)
+        st.session_state.quota_card_ids = None
 
 
 def _render_quota_section(user_id: str) -> None:
@@ -59,7 +42,7 @@ def _render_quota_section(user_id: str) -> None:
         st.markdown("##### 📊 ノルマ")
     with col_input:
         current_quota = get_daily_quota_limit(user_id)
-        new_quota = st.number_input(
+        st.number_input(
             "上限",
             min_value=1,
             max_value=100,
@@ -67,17 +50,13 @@ def _render_quota_section(user_id: str) -> None:
             step=1,
             key="sidebar_quota",
             label_visibility="collapsed",
+            on_change=_update_quota,
+            args=(user_id, current_quota),
         )
-        if new_quota != current_quota:
-            update_daily_quota_limit(user_id, new_quota)
-            st.session_state.quota_card_ids = None
-            st.rerun()
 
 
 def _logout() -> None:
     """ログアウト処理"""
-    import time
-
     from auth import delete_session
 
     cookie_controller = st.session_state.get("cookie_controller")
@@ -85,9 +64,7 @@ def _logout() -> None:
         session_token = cookie_controller.get("session_token")
         if session_token:
             delete_session(session_token)
-            cookie_controller.remove("session_token")
-            time.sleep(0.5)  # クッキー削除の反映を待つ
 
     reset_user_session_state(st.session_state)
-
-    st.rerun()
+    queue_cookie_remove(st.session_state, "session_token")
+    st.session_state["_force_logged_out_once"] = True

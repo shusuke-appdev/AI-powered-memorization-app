@@ -1,22 +1,12 @@
-/* ============ Mobile Responsive ============ */
 @media (max-width: 768px) {
-    .flashcard { padding: 20px; margin-bottom: 15px; }
-    .flashcard-question { font-size: 18px; padding-top: 45px; }
-    .flashcard-title { font-size: 16px; }
-    .stButton button { min-height: 48px; font-size: 16px; }
-
-    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] {
-        overflow-x: auto;
+    [data-testid="stMainBlockContainer"] { padding-right: 1rem; padding-left: 1rem; }
+    .flashcard { margin-bottom: 1rem; padding: 1.25rem; border-radius: 1rem; }
+    .flashcard-title { left: .75rem; max-width: calc(100% - 6.5rem); font-size: .95rem; }
+    .flashcard-category { right: .75rem; }
+    .flashcard-question { padding-top: 3.5rem; font-size: 1.1rem; }
+    .flashcard-answer { font-size: 1rem; }
+    .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button {
+        min-height: 44px; font-size: 1rem;
     }
-
-    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] {
-        flex: 0 0 auto;
-        min-height: 48px;
-        padding: 10px 14px !important;
-        white-space: nowrap;
-    }
-
-    .st-key-main_navigation > .stTabs > div > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] [data-testid="stMarkdownContainer"] p {
-        font-size: 16px !important;
-    }
+    .stTabs [data-baseweb="tab-list"] { overflow-x: auto; }
 }

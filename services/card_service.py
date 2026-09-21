@@ -12,9 +12,7 @@ from services.html_rendering import escape_html
 
 HIGHLIGHT_OPEN = "【"
 HIGHLIGHT_CLOSE = "】"
-_HIGHLIGHT_SPAN_START = (
-    '<span style="color: #dc2626; text-decoration: underline; font-weight: bold;">'
-)
+_HIGHLIGHT_SPAN_START = '<span class="highlighted-keyword">'
 
 PUNCTUATION_SET: frozenset[str] = frozenset(
     {

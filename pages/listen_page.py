@@ -13,6 +13,7 @@ from config import CATEGORIES
 from storage import load_source_cards
 
 
+@st.fragment
 def render_listen_page(user_id: str) -> None:
     """聞き流しタブを表示"""
     st.header("🎧 聞き流しモード")

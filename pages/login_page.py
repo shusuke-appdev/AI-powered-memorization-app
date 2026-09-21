@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import streamlit as st
-from streamlit_cookies_controller import CookieController
 
 from auth import (
     create_session,
@@ -13,10 +12,10 @@ from auth import (
     login_user_direct,
     register_user,
 )
-from services.session_service import reset_user_session_state
+from services.session_service import queue_cookie_set, reset_user_session_state
 
 
-def show_login_page(cookie_controller: CookieController) -> None:
+def show_login_page() -> None:
     """ログイン/登録ページを表示"""
     st.title("🧠 AI 暗記カード")
 
@@ -28,25 +27,37 @@ def show_login_page(cookie_controller: CookieController) -> None:
         login_tab, register_tab = st.tabs(["ログイン", "新規登録"])
 
         with login_tab:
-            _render_login_form(cookie_controller)
+            _render_login_form()
 
         with register_tab:
-            _render_register_form(cookie_controller)
+            _render_register_form()
 
 
-def _set_login_session(
-    cookie_controller: CookieController, user_id: str, username: str | None
-) -> None:
+def _set_login_session(user_id: str, username: str | None) -> None:
     """ログイン成功後のセッションを保存"""
     reset_user_session_state(st.session_state)
     st.session_state.user_id = user_id
     st.session_state.username = username or "ユーザー"
 
     token = create_session(user_id)
-    cookie_controller.set("session_token", token, max_age=30 * 24 * 60 * 60)
+    queue_cookie_set(
+        st.session_state,
+        "session_token",
+        token,
+        max_age=30 * 24 * 60 * 60,
+    )
 
 
-def _render_login_form(cookie_controller: CookieController) -> None:
+def _login(user_id: str, username: str) -> None:
+    """選択ユーザーでログインするボタンコールバック。"""
+    success, message, authenticated_user_id = login_user_direct(user_id)
+    if success:
+        _set_login_session(authenticated_user_id, username)
+    else:
+        st.session_state["login_error"] = message
+
+
+def _render_login_form() -> None:
     """ユーザー選択ログインを表示"""
     users = get_all_users()
     if not users:
@@ -57,30 +68,39 @@ def _render_login_form(cookie_controller: CookieController) -> None:
 
     st.markdown("アカウントを選択してログインしてください：")
     for user in users:
-        if st.button(
+        st.button(
             f"👤 {user['username']}",
             key=f"login_btn_{user['id']}",
-            use_container_width=True,
-        ):
-            success, message, user_id = login_user_direct(user["id"])
-            if success:
-                _set_login_session(cookie_controller, user_id, user["username"])
-                st.success(message)
-                st.rerun()
-            else:
-                st.error(message)
+            width="stretch",
+            on_click=_login,
+            args=(user["id"], user["username"]),
+        )
+
+    if error := st.session_state.pop("login_error", None):
+        st.error(error)
 
 
-def _render_register_form(cookie_controller: CookieController) -> None:
+def _register() -> None:
+    """ユーザー登録とログインを1回で行うコールバック。"""
+    username = st.session_state.get("register_username", "")
+    success, message, user_id = register_user(username)
+    if success:
+        _set_login_session(user_id, username)
+    else:
+        st.session_state["register_error"] = message
+
+
+def _render_register_form() -> None:
     """新規登録フォームを表示"""
     with st.form("register_form"):
-        new_username = st.text_input("ユーザー名", key="register_username")
+        st.text_input("ユーザー名", key="register_username")
 
-        if st.form_submit_button("登録", type="primary", use_container_width=True):
-            success, message, user_id = register_user(new_username)
-            if success:
-                _set_login_session(cookie_controller, user_id, new_username)
-                st.success(message)
-                st.rerun()
-            else:
-                st.error(message)
+        st.form_submit_button(
+            "登録",
+            type="primary",
+            width="stretch",
+            on_click=_register,
+        )
+
+    if error := st.session_state.pop("register_error", None):
+        st.error(error)

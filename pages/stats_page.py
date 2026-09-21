@@ -23,6 +23,7 @@ from storage import load_cards, load_source_cards
 from use_cases.card_workflows import import_backup_payload
 
 
+@st.fragment
 def render_stats_page(user_id: str) -> None:
     """統計・データ管理タブを表示"""
     st.title("📊 統計・データ管理")
@@ -137,7 +138,7 @@ def _render_category_chart(category: str, data: dict[str, Any]) -> None:
             textposition="inside", textinfo="percent", textfont_color="white"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key=f"chart_{category}")
+        st.plotly_chart(fig, width="stretch", key=f"chart_{category}")
     else:
         st.info("データがありません")
 
@@ -167,7 +168,7 @@ def _render_export_import_ui(
                 data=json_data,
                 file_name=f"flashcards_{date.today().isoformat()}.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
             )
         with col2:
             # CSVエクスポート
@@ -177,7 +178,7 @@ def _render_export_import_ui(
                 data=csv_data,
                 file_name=f"flashcards_{date.today().isoformat()}.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
             )
 
         st.info(f"📊 カード数: {len(cards)}枚 / 原文カード: {len(source_cards)}件")
@@ -238,7 +239,7 @@ def _render_export_import_ui(
                 if st.button(
                     "📤 この内容でインポート",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     key="confirm_import",
                 ):
                     import_summary = import_backup_payload(user_id, result)
@@ -253,4 +254,4 @@ def _render_export_import_ui(
                         st.info(
                             f"📄 {import_summary.source_count}件の原文カードもインポートしました。"
                         )
-                    st.rerun()
+                    st.rerun(scope="fragment")

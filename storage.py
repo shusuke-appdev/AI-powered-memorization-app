@@ -123,9 +123,32 @@ def load_cards(user_id: str) -> list[dict[str, Any]]:
     return _load_cards_cached(user_id)
 
 
+@_cache_data_when_streamlit_runs
+def _load_cards_by_category_cached(user_id: str, category: str) -> list[dict[str, Any]]:
+    """指定科目のカードだけを読み込む（内部用）。"""
+    supabase = get_supabase()
+
+    def fetch_page(start: int, end: int) -> list[dict[str, Any]]:
+        query = supabase.table("cards").select(_CARD_COLUMNS).eq("user_id", user_id)
+        if category == "その他":
+            query = query.or_("category.eq.その他,category.is.null")
+        else:
+            query = query.eq("category", category)
+        result = query.order("id").range(start, end).execute()
+        return result.data if result.data else []
+
+    return [_row_to_card(row) for row in _fetch_all_pages(fetch_page)]
+
+
+def load_cards_by_category(user_id: str, category: str) -> list[dict[str, Any]]:
+    """指定ユーザー・科目のカードだけを読み込む。"""
+    return _load_cards_by_category_cached(user_id, category)
+
+
 def clear_cards_cache(user_id: str | None = None) -> None:
     """カードのキャッシュをクリア"""
     _clear_function_cache(_load_cards_cached)
+    _clear_function_cache(_load_cards_by_category_cached)
 
 
 def add_card(
@@ -240,9 +263,38 @@ def load_source_cards(user_id: str) -> list[dict[str, Any]]:
     return _load_source_cards_cached(user_id)
 
 
+@_cache_data_when_streamlit_runs
+def _load_source_cards_by_category_cached(
+    user_id: str, category: str
+) -> list[dict[str, Any]]:
+    """指定科目の原文カードだけを読み込む（内部用）。"""
+    supabase = get_supabase()
+
+    def fetch_page(start: int, end: int) -> list[dict[str, Any]]:
+        query = (
+            supabase.table("source_cards")
+            .select(_SOURCE_CARD_COLUMNS)
+            .eq("user_id", user_id)
+        )
+        if category == "その他":
+            query = query.or_("category.eq.その他,category.is.null")
+        else:
+            query = query.eq("category", category)
+        result = query.order("id").range(start, end).execute()
+        return result.data if result.data else []
+
+    return _fetch_all_pages(fetch_page)
+
+
+def load_source_cards_by_category(user_id: str, category: str) -> list[dict[str, Any]]:
+    """指定ユーザー・科目の原文カードだけを読み込む。"""
+    return _load_source_cards_by_category_cached(user_id, category)
+
+
 def clear_source_cards_cache(user_id: str | None = None) -> None:
     """原文カードのキャッシュをクリア"""
     _clear_function_cache(_load_source_cards_cached)
+    _clear_function_cache(_load_source_cards_by_category_cached)
 
 
 def _require_affected_row(result: Any, label: str) -> None:

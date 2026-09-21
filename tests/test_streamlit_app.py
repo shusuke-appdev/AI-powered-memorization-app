@@ -1,28 +1,12 @@
 from streamlit.testing.v1 import AppTest
 
 _LOGIN_SCRIPT = r"""
-from unittest.mock import patch
+import pages.login_page as login_page
 
-from pages.login_page import show_login_page
-
-
-class FakeCookieController:
-    def set(self, *args, **kwargs):
-        pass
-
-
-with (
-    patch(
-        "pages.login_page.get_all_users",
-        return_value=[{"id": "user-b", "username": "User B"}],
-    ),
-    patch(
-        "pages.login_page.login_user_direct",
-        return_value=(True, "ログイン成功", "user-b"),
-    ),
-    patch("pages.login_page.create_session", return_value="token-b"),
-):
-    show_login_page(FakeCookieController())
+login_page.get_all_users = lambda: [{"id": "user-b", "username": "User B"}]
+login_page.login_user_direct = lambda user_id: (True, "ログイン成功", user_id)
+login_page.create_session = lambda user_id: "token-b"
+login_page.show_login_page()
 """
 
 
@@ -40,3 +24,9 @@ def test_login_clears_previous_users_streamlit_state() -> None:
     assert "reviewed_source_ids" not in app.session_state
     assert "reviewed_card_ids" not in app.session_state
     assert "add_card_text" not in app.session_state
+    assert app.session_state["_pending_cookie_action"] == {
+        "action": "set",
+        "name": "session_token",
+        "value": "token-b",
+        "max_age": 30 * 24 * 60 * 60,
+    }

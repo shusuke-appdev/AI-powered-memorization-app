@@ -9,6 +9,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from styles.theme import render_theme_tokens_css
+
 _STYLES_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -24,10 +26,8 @@ def apply_base_styles() -> None:
     """ベーススタイルとモバイルレスポンシブCSSを適用"""
     base_css = _read_css("base.css")
     mobile_css = _read_css("mobile.css")
-    st.markdown(f"<style>{base_css}\n{mobile_css}</style>", unsafe_allow_html=True)
-
-
-def apply_dark_mode_styles() -> None:
-    """ダークモード用CSSを適用"""
-    dark_css = _read_css("dark_mode.css")
-    st.markdown(f"<style>{dark_css}</style>", unsafe_allow_html=True)
+    tokens_css = render_theme_tokens_css()
+    st.markdown(
+        f"<style>{tokens_css}\n{base_css}\n{mobile_css}</style>",
+        unsafe_allow_html=True,
+    )

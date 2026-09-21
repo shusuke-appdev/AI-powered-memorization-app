@@ -27,12 +27,15 @@ _SK_RANK = "add_card_rank"
 _SK_WIDGET_KEY = "widget_key_counter"
 _SK_GENERATED_CARDS = "generated_cards"
 _SK_PREV_MANUAL_TEXT = "prev_manual_text"
+_SK_NOTICE = "add_card_notice"
 
 
+@st.fragment
 def render_add_card_page(user_id: str) -> None:
     """カード追加タブを表示"""
     # セッション状態の初期化
     _init_session_state()
+    _render_notice()
 
     # タイトルとクリアボタン
     title_col, cancel_col = st.columns([3, 1])
@@ -44,9 +47,12 @@ def render_add_card_page(user_id: str) -> None:
             "generated_cards" in st.session_state or st.session_state.add_card_text
         )
         if has_progress:
-            if st.button("🔄 クリア", type="secondary", use_container_width=True):
-                _clear_all_state()
-                st.rerun()
+            st.button(
+                "🔄 クリア",
+                type="secondary",
+                width="stretch",
+                on_click=_clear_all_state,
+            )
 
     # メタデータ入力
     selected_category = _render_category_select()
@@ -92,6 +98,21 @@ def _clear_all_state() -> None:
     st.session_state[_SK_TYPE] = ""
     st.session_state[_SK_RANK] = "B"
     st.session_state[_SK_WIDGET_KEY] += 1
+    for key in list(st.session_state):
+        if key.startswith(("add_card_preview_q_", "add_card_preview_a_")):
+            del st.session_state[key]
+
+
+def _render_notice() -> None:
+    """保存結果を次の描画で1回だけ表示する。"""
+    notice = st.session_state.pop(_SK_NOTICE, None)
+    if not notice:
+        return
+    kind, message = notice
+    if kind == "success":
+        st.success(message)
+    else:
+        st.warning(message)
 
 
 def _sync_widget_to_state(widget_key: str, state_key: str) -> None:
@@ -218,43 +239,60 @@ def _render_no_blank_flow(
         else:
             st.warning(marker_message)
 
-    if st.button("💾 保存", type="primary", key="save_no_blank_btn"):
-        if not source_text:
-            st.warning("テキストを入力してください。")
-        elif selected_category not in CATEGORIES:
-            st.warning("カテゴリを選択してください。")
-        elif selected_type not in CARD_TYPES:
-            st.warning("カードタイプを選択してください。")
-        elif not marker_is_valid:
-            st.warning(marker_message)
-        else:
-            highlighted_keywords = extract_highlight_keywords(source_text)
-            try:
-                save_source_with_cards(
-                    user_id,
-                    source_text=source_text,
-                    title=card_title,
-                    category=selected_category,
-                    card_type=selected_type,
-                    cards=[
-                        {
-                            "question": source_text,
-                            "answer": "",
-                            "title": card_title,
-                            "category": selected_category,
-                            "blank_count": 0,
-                            "card_type": selected_type,
-                            "rank": selected_rank,
-                            "highlighted_keywords": highlighted_keywords,
-                        }
-                    ],
-                )
-            except ValidationError as exc:
-                st.warning(exc.user_message)
-                return
-            st.success("保存しました！")
-            _clear_all_state()
-            st.rerun()
+    st.button(
+        "💾 保存",
+        type="primary",
+        key="save_no_blank_btn",
+        on_click=_save_no_blank_card,
+        args=(user_id,),
+    )
+
+
+def _save_no_blank_card(user_id: str) -> None:
+    """穴埋めなしカードを1回だけ保存する。"""
+    source_text = st.session_state.get(_SK_TEXT, "")
+    category = st.session_state.get(_SK_CATEGORY, "")
+    card_type = st.session_state.get(_SK_TYPE, "")
+    marker_is_valid, marker_message, _count = validate_highlight_markers(source_text)
+    if not source_text:
+        st.session_state[_SK_NOTICE] = ("warning", "テキストを入力してください。")
+        return
+    if category not in CATEGORIES:
+        st.session_state[_SK_NOTICE] = ("warning", "カテゴリを選択してください。")
+        return
+    if card_type not in CARD_TYPES:
+        st.session_state[_SK_NOTICE] = ("warning", "カードタイプを選択してください。")
+        return
+    if not marker_is_valid:
+        st.session_state[_SK_NOTICE] = ("warning", marker_message)
+        return
+
+    highlighted_keywords = extract_highlight_keywords(source_text)
+    try:
+        save_source_with_cards(
+            user_id,
+            source_text=source_text,
+            title=st.session_state.get(_SK_TITLE, ""),
+            category=category,
+            card_type=card_type,
+            cards=[
+                {
+                    "question": source_text,
+                    "answer": "",
+                    "title": st.session_state.get(_SK_TITLE, ""),
+                    "category": category,
+                    "blank_count": 0,
+                    "card_type": card_type,
+                    "rank": st.session_state.get(_SK_RANK, "B"),
+                    "highlighted_keywords": highlighted_keywords,
+                }
+            ],
+        )
+    except ValidationError as exc:
+        st.session_state[_SK_NOTICE] = ("warning", exc.user_message)
+        return
+    _clear_all_state()
+    st.session_state[_SK_NOTICE] = ("success", "保存しました！")
 
 
 def _render_highlight_preview(text: str, keywords: str = "") -> None:
@@ -269,7 +307,7 @@ def _render_highlight_preview(text: str, keywords: str = "") -> None:
 
     preview_q = apply_highlight(text, keywords)
     st.markdown(
-        f"<div style='font-size: 0.9em; padding: 12px; margin-bottom: 20px; background-color: #f9fafb; border-radius: 4px; border-left: 4px solid #3b82f6;'><strong>ハイライト表示プレビュー:</strong> <br/> {preview_q}</div>",
+        f"<div class='highlight-preview'><strong>ハイライト表示プレビュー:</strong><br>{preview_q}</div>",
         unsafe_allow_html=True,
     )
 
@@ -290,7 +328,7 @@ def _render_blank_flow(
     if wkey not in st.session_state:
         st.session_state[wkey] = st.session_state.add_card_text
     source_text = st.text_area(
-        "",
+        "原文テキスト",
         height=200,
         placeholder="例: 民法【709条】は【不法行為】による【損害賠償】を規定している。",
         key=wkey,
@@ -350,61 +388,73 @@ def _render_save_form(
     st.subheader("プレビュー & 保存")
 
     with st.form("save_cards_form"):
-        cards_to_save = []
         for i, card in enumerate(st.session_state.generated_cards):
             st.markdown(f"**カード {i + 1}**")
             col1, col2 = st.columns(2)
             with col1:
-                q = st.text_input(
+                q_key = f"add_card_preview_q_{i}"
+                if q_key not in st.session_state:
+                    st.session_state[q_key] = card["question"]
+                st.text_input(
                     "問題",
-                    value=card["question"],
-                    key=f"q_{i}",
+                    key=q_key,
                     label_visibility="collapsed",
                     placeholder="問題",
                 )
             with col2:
-                a = st.text_input(
+                a_key = f"add_card_preview_a_{i}"
+                if a_key not in st.session_state:
+                    st.session_state[a_key] = card["answer"]
+                st.text_input(
                     "答え",
-                    value=card["answer"],
-                    key=f"a_{i}",
+                    key=a_key,
                     label_visibility="collapsed",
                     placeholder="答え",
                 )
-            cards_to_save.append({"question": q, "answer": a})
-
             st.markdown("---")
 
-        if st.form_submit_button("💾 デッキに保存", type="primary"):
-            original_text = st.session_state.get("add_card_text", "")
-            cards_payload = []
-            for card in cards_to_save:
-                cards_payload.append(
-                    {
-                        "question": card["question"],
-                        "answer": card["answer"],
-                        "title": card_title,
-                        "category": selected_category,
-                        "blank_count": count_card_blanks(card["question"]),
-                        "card_type": selected_type,
-                        "rank": selected_rank,
-                    }
-                )
+        st.form_submit_button(
+            "💾 デッキに保存",
+            type="primary",
+            on_click=_save_generated_cards,
+            args=(user_id,),
+        )
 
-            try:
-                result = save_source_with_cards(
-                    user_id,
-                    source_text=original_text,
-                    title=card_title,
-                    category=selected_category,
-                    card_type=selected_type,
-                    cards=cards_payload,
-                )
-            except ValidationError as exc:
-                st.warning(exc.user_message)
-                return
 
-            st.success(
-                f"{result.card_count} 枚のカードを保存しました！（原文カードも保存済み）"
-            )
-            _clear_all_state()
-            st.rerun()
+def _save_generated_cards(user_id: str) -> None:
+    """生成済みプレビューを1回だけ保存し、成功時だけ消去する。"""
+    generated_cards = st.session_state.get(_SK_GENERATED_CARDS, [])
+    cards_payload = []
+    for i, _card in enumerate(generated_cards):
+        question = st.session_state.get(f"add_card_preview_q_{i}", "")
+        answer = st.session_state.get(f"add_card_preview_a_{i}", "")
+        cards_payload.append(
+            {
+                "question": question,
+                "answer": answer,
+                "title": st.session_state.get(_SK_TITLE, ""),
+                "category": st.session_state.get(_SK_CATEGORY, ""),
+                "blank_count": count_card_blanks(question),
+                "card_type": st.session_state.get(_SK_TYPE, ""),
+                "rank": st.session_state.get(_SK_RANK, "B"),
+            }
+        )
+
+    try:
+        result = save_source_with_cards(
+            user_id,
+            source_text=st.session_state.get(_SK_TEXT, ""),
+            title=st.session_state.get(_SK_TITLE, ""),
+            category=st.session_state.get(_SK_CATEGORY, ""),
+            card_type=st.session_state.get(_SK_TYPE, ""),
+            cards=cards_payload,
+        )
+    except ValidationError as exc:
+        st.session_state[_SK_NOTICE] = ("warning", exc.user_message)
+        return
+
+    _clear_all_state()
+    st.session_state[_SK_NOTICE] = (
+        "success",
+        f"{result.card_count} 枚のカードを保存しました！（原文カードも保存済み）",
+    )

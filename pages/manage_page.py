@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import unicodedata
+from math import ceil
 from typing import Any
 
 import streamlit as st
@@ -20,8 +21,8 @@ from services.card_service import (
 )
 from storage import (
     delete_card,
-    load_cards,
-    load_source_cards,
+    load_cards_by_category,
+    load_source_cards_by_category,
     toggle_favorite_by_source_id,
     update_card_content,
 )
@@ -38,14 +39,17 @@ MANAGE_SORT_OPTIONS = [
     "復習日が近い順",
 ]
 _EMPTY_REVIEW_DATE = "9999-99-99"
+_MANAGE_PAGE_SIZE = 20
 
 
+@st.fragment
 def render_manage_page(user_id: str) -> None:
     """カード管理タブを表示"""
     st.title("🗂️ カード管理")
 
-    cards = load_cards(user_id)
-    source_cards = load_source_cards(user_id)
+    selected_category = st.selectbox("科目", CATEGORIES, key="manage_category")
+    cards = load_cards_by_category(user_id, selected_category)
+    source_cards = load_source_cards_by_category(user_id, selected_category)
     cards_by_source_id = _group_cards_by_source_id(cards)
 
     if not source_cards and not cards:
@@ -54,9 +58,12 @@ def render_manage_page(user_id: str) -> None:
         )
         return
 
-    st.markdown(f"**原文カード: {len(source_cards)} 件 / 暗記カード: {len(cards)} 枚**")
+    st.markdown(
+        f"**{selected_category} — 原文カード: {len(source_cards)} 件 / "
+        f"暗記カード: {len(cards)} 枚**"
+    )
 
-    # フィルタ
+    # 選択した科目だけを描画する
     filter_col1, filter_col2, filter_col3 = st.columns([2, 1, 1])
     with filter_col1:
         search_query = st.text_input(
@@ -76,21 +83,16 @@ def render_manage_page(user_id: str) -> None:
             key="manage_sort_order",
         )
 
-    # カテゴリタブ
-    tabs = st.tabs(CATEGORIES)
-
-    for i, category in enumerate(CATEGORIES):
-        with tabs[i]:
-            _render_category_tab(
-                user_id,
-                category,
-                cards,
-                source_cards,
-                cards_by_source_id,
-                search_query,
-                selected_type_filter,
-                selected_sort_order,
-            )
+    _render_category_tab(
+        user_id,
+        selected_category,
+        cards,
+        source_cards,
+        cards_by_source_id,
+        search_query,
+        selected_type_filter,
+        selected_sort_order,
+    )
 
 
 def _render_category_tab(
@@ -154,7 +156,31 @@ def _render_category_tab(
     )
     orphan_cards = _sort_orphan_cards(orphan_cards, selected_sort_order)
 
-    for sc in category_sources:
+    page_count = max(1, ceil(len(category_sources) / _MANAGE_PAGE_SIZE))
+    page_key = f"manage_page_{category}"
+    current_page = int(st.session_state.get(page_key, 1))
+    if current_page > page_count:
+        st.session_state[page_key] = page_count
+    elif current_page < 1:
+        st.session_state[page_key] = 1
+    page = int(
+        st.number_input(
+            "ページ",
+            min_value=1,
+            max_value=page_count,
+            step=1,
+            key=page_key,
+        )
+    )
+    start = (page - 1) * _MANAGE_PAGE_SIZE
+    visible_sources = category_sources[start : start + _MANAGE_PAGE_SIZE]
+    if category_sources:
+        st.caption(
+            f"{len(category_sources)} 件中 {start + 1}〜"
+            f"{start + len(visible_sources)} 件を表示"
+        )
+
+    for sc in visible_sources:
         linked_cards = cards_by_source_id.get(str(sc["id"]), [])
         _render_source_card_expander(user_id, sc, linked_cards, category)
 
@@ -187,7 +213,11 @@ def _render_source_card_expander(
         # 原文表示・編集
         st.markdown("**📝 原文**")
         edited_source = st.text_area(
-            "", value=source_text, height=120, key=f"edit_source_{source_id}"
+            "原文",
+            value=source_text,
+            height=120,
+            key=f"edit_source_{source_id}",
+            label_visibility="collapsed",
         )
 
         group_rank = _group_rank(linked_cards)
@@ -291,7 +321,7 @@ def _render_source_card_expander(
                 "💾 保存",
                 key=f"save_source_{source_id}",
                 type="primary" if has_changes else "secondary",
-                use_container_width=True,
+                width="stretch",
                 disabled=not has_changes or requires_regeneration,
             ):
                 _save_source_and_cards(
@@ -318,16 +348,12 @@ def _render_source_card_expander(
 
         with btn_col2:
             fav_label = "⭐ 解除" if is_source_fav else "☆ 登録"
-            if st.button(
-                fav_label, key=f"edit_fav_{source_id}", use_container_width=True
-            ):
+            if st.button(fav_label, key=f"edit_fav_{source_id}", width="stretch"):
                 toggle_favorite_by_source_id(user_id, source_id, not is_source_fav)
-                st.rerun()
+                st.rerun(scope="fragment")
 
         with btn_col3:
-            if st.button(
-                "🗑️ 全削除", key=f"del_all_{source_id}", use_container_width=True
-            ):
+            if st.button("🗑️ 全削除", key=f"del_all_{source_id}", width="stretch"):
                 st.session_state[f"confirm_del_all_{source_id}"] = True
 
         # 削除確認
@@ -339,11 +365,11 @@ def _render_source_card_expander(
                     delete_source_bundle(user_id, source_id)
                     del st.session_state[f"confirm_del_all_{source_id}"]
                     st.success("削除しました")
-                    st.rerun()
+                    st.rerun(scope="fragment")
             with c2:
                 if st.button("✗ 戻る", key=f"no_del_all_{source_id}"):
                     del st.session_state[f"confirm_del_all_{source_id}"]
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
         regen_key = f"regen_cards_{source_id}"
         regen_context_key = f"regen_context_{source_id}"
@@ -456,11 +482,11 @@ def _render_source_card_expander(
                 st.session_state.pop(regen_key, None)
                 st.session_state.pop(regen_context_key, None)
                 st.success("再生成したカードで上書き保存しました！")
-                st.rerun()
+                st.rerun(scope="fragment")
             if st.button("キャンセル", key=f"cancel_regen_{source_id}"):
                 st.session_state.pop(regen_key, None)
                 st.session_state.pop(regen_context_key, None)
-                st.rerun()
+                st.rerun(scope="fragment")
 
 
 def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> None:
@@ -490,7 +516,7 @@ def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> N
         if st.button("🗑️", key=f"del_single_{card['id']}", help="このカードのみ削除"):
             delete_card(user_id, card["id"])
             st.success("カードを削除しました")
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 def _highlight_keywords_for_save(
@@ -590,7 +616,7 @@ def _save_source_and_cards(
         st.success(f"✅ 以下の項目を更新しました: {', '.join(changed_items)}")
     else:
         st.info("変更はありませんでした")
-    st.rerun()
+    st.rerun(scope="fragment")
 
 
 def _render_orphan_card(user_id: str, card: dict) -> None:
@@ -672,12 +698,12 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
                     ),
                 )
                 st.success("更新しました")
-                st.rerun()
+                st.rerun(scope="fragment")
 
         if st.button("🗑️ 削除", key=f"del_orphan_{card['id']}"):
             delete_card(user_id, card["id"])
             st.success("削除しました")
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 def _group_cards_by_source_id(cards: list[dict]) -> dict[str, list[dict]]:
