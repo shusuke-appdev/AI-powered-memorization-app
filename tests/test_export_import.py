@@ -74,6 +74,46 @@ def test_json_import_skips_duplicates_by_question_and_answer() -> None:
     assert result["skipped"] == 1
 
 
+def test_source_only_backup_can_be_imported() -> None:
+    source = {
+        "id": "source-only",
+        "source_text": "原文だけ残ったカード",
+        "category": "民法",
+        "card_type": "知識",
+    }
+    preview = build_import_preview(import_cards_json(export_cards_json([], [source])))
+
+    assert preview.can_import is True
+    assert preview.source_count == 1
+    assert preview.card_count == 0
+
+
+def test_duplicate_skip_does_not_create_empty_linked_source() -> None:
+    source = {
+        "id": "linked-source",
+        "source_text": "民法【709条】",
+        "category": "民法",
+        "card_type": "規範",
+    }
+    card = {
+        "id": "linked-card",
+        "source_id": "linked-source",
+        "question": "民法______",
+        "answer": "709条",
+        "category": "民法",
+        "card_type": "規範",
+        "rank": "B",
+        "blank_count": 1,
+    }
+    result = import_cards_json(
+        export_cards_json([card], [source]), existing_cards=[card]
+    )
+
+    assert result["source_cards"] == []
+    assert result["cards"] == []
+    assert build_import_preview(result).can_import is False
+
+
 def test_json_import_skips_duplicate_cards_inside_same_file() -> None:
     exported = json.dumps(
         {

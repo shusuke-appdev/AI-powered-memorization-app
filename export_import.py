@@ -46,7 +46,7 @@ class ImportPreview:
 
     @property
     def can_import(self) -> bool:
-        return not self.errors and self.card_count > 0
+        return not self.errors and (self.card_count > 0 or self.source_count > 0)
 
 
 def build_import_preview(result: dict[str, Any]) -> ImportPreview:
@@ -185,7 +185,19 @@ def import_cards_json(
             continue
         cards.append(card)
 
+    original_referenced_source_ids = {
+        card["source_export_id"] for card in cards if card["source_export_id"]
+    }
     cards, skipped = _filter_duplicate_cards(cards, existing_cards, duplicate_action)
+    retained_referenced_source_ids = {
+        card["source_export_id"] for card in cards if card["source_export_id"]
+    }
+    source_cards = [
+        source
+        for source in source_cards
+        if source["export_id"] not in original_referenced_source_ids
+        or source["export_id"] in retained_referenced_source_ids
+    ]
 
     if errors:
         return {

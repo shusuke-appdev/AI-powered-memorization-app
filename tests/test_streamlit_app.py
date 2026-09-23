@@ -1,4 +1,9 @@
+from unittest.mock import patch
+
+import pytest
 from streamlit.testing.v1 import AppTest
+
+from pages.login_page import _set_login_session
 
 _LOGIN_SCRIPT = r"""
 import pages.login_page as login_page
@@ -29,4 +34,22 @@ def test_login_clears_previous_users_streamlit_state() -> None:
         "name": "session_token",
         "value": "token-b",
         "max_age": 30 * 24 * 60 * 60,
+    }
+
+
+def test_failed_session_creation_does_not_authenticate_user() -> None:
+    session_state = {
+        "register_username": "User B",
+        "user_id": "user-a",
+        "username": "User A",
+    }
+    with (
+        patch("pages.login_page.st.session_state", session_state),
+        patch("pages.login_page.create_session", side_effect=RuntimeError("DB down")),
+    ):
+        with pytest.raises(RuntimeError, match="DB down"):
+            _set_login_session("user-b", "User B")
+
+    assert session_state == {
+        "_pending_cookie_action": {"action": "remove", "name": "session_token"}
     }

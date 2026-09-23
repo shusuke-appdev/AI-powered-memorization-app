@@ -122,7 +122,7 @@ class SourceBundleCommand:
             raise ValidationError("カテゴリを選択してください。")
         if self.card_type not in CARD_TYPES:
             raise ValidationError("カードタイプを選択してください。")
-        if not self.cards:
+        if not self.cards and self.mode != "update":
             raise ValidationError("保存できるカードがありません。")
         for card in self.cards:
             card.validate()
@@ -131,6 +131,19 @@ class SourceBundleCommand:
 
     def to_rpc_payload(self) -> dict[str, Any]:
         self.validate()
+        card_payloads = []
+        for card in self.cards:
+            payload = {**card.to_payload(), "id": card.card_id}
+            if self.mode == "update":
+                for field in (
+                    "ease_factor",
+                    "interval",
+                    "repetitions",
+                    "next_review",
+                    "is_favorite",
+                ):
+                    payload.pop(field, None)
+            card_payloads.append(payload)
         return {
             "mode": self.mode,
             "source_id": self.source_id,
@@ -138,7 +151,7 @@ class SourceBundleCommand:
             "title": self.title.strip(),
             "category": self.category,
             "card_type": self.card_type,
-            "cards": [{**card.to_payload(), "id": card.card_id} for card in self.cards],
+            "cards": card_payloads,
         }
 
 

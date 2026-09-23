@@ -12,7 +12,11 @@ from auth import (
     login_user_direct,
     register_user,
 )
-from services.session_service import queue_cookie_set, reset_user_session_state
+from services.session_service import (
+    queue_cookie_remove,
+    queue_cookie_set,
+    reset_user_session_state,
+)
 
 
 def show_login_page() -> None:
@@ -35,11 +39,15 @@ def show_login_page() -> None:
 
 def _set_login_session(user_id: str, username: str | None) -> None:
     """ログイン成功後のセッションを保存"""
+    try:
+        token = create_session(user_id)
+    except Exception:
+        reset_user_session_state(st.session_state)
+        queue_cookie_remove(st.session_state, "session_token")
+        raise
     reset_user_session_state(st.session_state)
     st.session_state.user_id = user_id
     st.session_state.username = username or "ユーザー"
-
-    token = create_session(user_id)
     queue_cookie_set(
         st.session_state,
         "session_token",

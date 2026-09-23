@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tomllib
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
@@ -38,15 +39,18 @@ def main() -> None:
         login_user_direct,
     )
     from storage import (
+        get_source_card,
         import_backup_atomic_rpc,
         load_cards,
         load_daily_assignments,
         load_source_cards,
         sync_daily_assignments,
+        toggle_favorite,
     )
     from use_cases.card_workflows import (
         delete_source_bundle,
         save_source_with_cards,
+        update_source_with_cards,
     )
     from use_cases.review_workflows import complete_review
 
@@ -62,6 +66,8 @@ def main() -> None:
     delete_session(token)
 
     source_id: str | None = None
+    imported_source_id: str | None = None
+    import_title: str | None = None
     try:
         rollback_title = "__codex_rollback__"
         try:
@@ -171,12 +177,94 @@ def main() -> None:
         if not assignments[0]["completed_at"]:
             raise RuntimeError("日次割当の完了状態が保存されていません。")
 
+        progress_before_edit = next(
+            c for c in load_cards(user_id) if str(c["id"]) == card_id
+        )
+        toggle_favorite(user_id, card_id, True)
+        update_source_with_cards(
+            user_id,
+            source_id=source_id,
+            source_text="__codex_smoke_source__",
+            title="__codex_smoke_edited__",
+            category="その他",
+            card_type="知識",
+            cards=[
+                {
+                    **card,
+                    "title": "__codex_smoke_edited__",
+                    "ease_factor": 1.3,
+                    "interval": 0,
+                    "repetitions": 0,
+                    "next_review": "2000-01-01",
+                    "is_favorite": False,
+                }
+            ],
+        )
+        progress_after_edit = next(
+            c for c in load_cards(user_id) if str(c["id"]) == card_id
+        )
+        for field in ("ease_factor", "interval", "repetitions", "next_review"):
+            if progress_after_edit[field] != progress_before_edit[field]:
+                raise RuntimeError("カード編集で復習進捗が巻き戻りました。")
+        if not progress_after_edit["is_favorite"]:
+            raise RuntimeError("カード編集でお気に入りが巻き戻りました。")
+
+        import_title = f"__codex_source_only_{uuid.uuid4().hex}__"
+        imported = import_backup_atomic_rpc(
+            user_id,
+            source_cards=[
+                {
+                    "export_id": "source-only",
+                    "source_text": "原文のみの復元確認",
+                    "title": import_title,
+                    "category": "その他",
+                    "card_type": "知識",
+                }
+            ],
+            cards=[],
+            reset_progress=False,
+        )
+        if (
+            int(imported.get("source_count", 0)) != 1
+            or int(imported.get("card_count", -1)) != 0
+        ):
+            raise RuntimeError("原文のみのインポート件数が不正です。")
+        imported_sources = [
+            source
+            for source in load_source_cards(user_id)
+            if source.get("title") == import_title
+        ]
+        if len(imported_sources) != 1:
+            raise RuntimeError("原文のみのインポートを読み戻せませんでした。")
+        imported_source_id = str(imported_sources[0]["id"])
+        update_source_with_cards(
+            user_id,
+            source_id=imported_source_id,
+            source_text="原文のみの復元確認",
+            title=f"{import_title}_edited",
+            category="その他",
+            card_type="知識",
+            cards=[],
+        )
+        if (
+            get_source_card(user_id, imported_source_id)["title"]
+            != f"{import_title}_edited"
+        ):
+            raise RuntimeError("原文のみの編集を読み戻せませんでした。")
+
         print(
             "LIVE_SMOKE_OK: login/session/transactional-card/concurrent-review/"
             "review-idempotency/import-rollback/"
-            f"daily-assignment/delete verified with {MAINTENANCE_USERNAME}"
+            "daily-assignment/progress-preservation/source-only-import/delete "
+            f"verified with {MAINTENANCE_USERNAME}"
         )
     finally:
+        if import_title and not imported_source_id:
+            for source in load_source_cards(user_id):
+                if source.get("title") == import_title:
+                    imported_source_id = str(source["id"])
+        if imported_source_id:
+            delete_source_bundle(user_id, imported_source_id)
         if source_id:
             delete_source_bundle(user_id, source_id)
 
