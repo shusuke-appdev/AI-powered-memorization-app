@@ -106,23 +106,13 @@ def _render_category_tab(
     selected_sort_order: str,
 ) -> None:
     """カテゴリタブの内容を表示"""
-    category_sources = [
-        s for s in source_cards if s.get("category", "その他") == category
-    ]
-
-    if selected_type_filter != "すべて":
-        category_sources = [
-            s for s in category_sources if _matches_type_filter(s, selected_type_filter)
-        ]
-
-    if search_query:
-        query_lower = search_query.lower()
-        category_sources = [
-            s
-            for s in category_sources
-            if query_lower in s.get("source_text", "").lower()
-            or query_lower in s.get("title", "").lower()
-        ]
+    category_sources = _matching_sources(
+        source_cards,
+        cards_by_source_id,
+        category,
+        selected_type_filter,
+        search_query,
+    )
 
     orphan_cards = [
         c
@@ -590,11 +580,6 @@ def _save_source_and_cards(
                     0 if c_type in BLANK_DISABLED_TYPES else count_card_blanks(new_q)
                 ),
                 "highlighted_keywords": hl_to_save,
-                "ease_factor": card.get("ease_factor"),
-                "interval": card.get("interval"),
-                "repetitions": card.get("repetitions"),
-                "next_review": card.get("next_review"),
-                "is_favorite": card.get("is_favorite", False),
             }
         )
 
@@ -704,6 +689,37 @@ def _render_orphan_card(user_id: str, card: dict) -> None:
             delete_card(user_id, card["id"])
             st.success("削除しました")
             st.rerun(scope="fragment")
+
+
+def _matching_sources(
+    source_cards: list[dict],
+    cards_by_source_id: dict[str, list[dict]],
+    category: str,
+    selected_type_filter: str,
+    search_query: str,
+) -> list[dict]:
+    """原文と紐づくカードの本文を対象に管理画面の検索を行う。"""
+    query = search_query.lower()
+    matches = []
+    for source in source_cards:
+        if (source.get("category") or "その他") != category:
+            continue
+        if selected_type_filter != "すべて" and not _matches_type_filter(
+            source, selected_type_filter
+        ):
+            continue
+        if query and not (
+            query in (source.get("source_text") or "").lower()
+            or query in (source.get("title") or "").lower()
+            or any(
+                query in (card.get("question") or "").lower()
+                or query in (card.get("answer") or "").lower()
+                for card in cards_by_source_id.get(str(source["id"]), [])
+            )
+        ):
+            continue
+        matches.append(source)
+    return matches
 
 
 def _group_cards_by_source_id(cards: list[dict]) -> dict[str, list[dict]]:

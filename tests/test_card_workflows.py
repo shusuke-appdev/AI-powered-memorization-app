@@ -7,6 +7,7 @@ from use_cases.card_workflows import (
     import_backup_payload,
     replace_source_cards,
     save_source_with_cards,
+    update_source_with_cards,
 )
 
 
@@ -77,6 +78,56 @@ def test_replace_source_cards_delegates_existing_row_discovery_to_rpc() -> None:
     payload = save_rpc.call_args.args[1]
     assert payload["mode"] == "replace"
     assert payload["source_id"] == "source-1"
+
+
+def test_source_edit_omits_stale_review_progress_and_favorite() -> None:
+    with patch(
+        "use_cases.card_workflows.save_source_bundle_rpc",
+        return_value={"source_count": 1, "card_count": 1},
+    ) as save_rpc:
+        update_source_with_cards(
+            "user-1",
+            source_id="source-1",
+            source_text="民法【709条】",
+            title="更新後",
+            category="民法",
+            card_type="規範",
+            cards=[
+                _blank_card(
+                    id="card-1",
+                    ease_factor=1.5,
+                    interval=30,
+                    repetitions=8,
+                    next_review="2030-01-01",
+                    is_favorite=True,
+                )
+            ],
+        )
+
+    card_payload = save_rpc.call_args.args[1]["cards"][0]
+    assert card_payload["id"] == "card-1"
+    assert card_payload["title"] == "更新後"
+    assert not set(card_payload).intersection(
+        {"ease_factor", "interval", "repetitions", "next_review", "is_favorite"}
+    )
+
+
+def test_source_without_cards_can_be_edited() -> None:
+    with patch(
+        "use_cases.card_workflows.save_source_bundle_rpc",
+        return_value={"source_count": 1, "card_count": 0},
+    ) as save_rpc:
+        update_source_with_cards(
+            "user-1",
+            source_id="source-1",
+            source_text="残った原文",
+            title="更新後",
+            category="民法",
+            card_type="知識",
+            cards=[],
+        )
+
+    assert save_rpc.call_args.args[1]["cards"] == []
 
 
 def test_import_backup_payload_calls_atomic_rpc_with_source_mapping() -> None:
