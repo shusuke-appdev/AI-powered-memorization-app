@@ -10,7 +10,7 @@ from typing import Any
 
 import streamlit as st
 
-from application_errors import ValidationError
+from application_errors import ApplicationError, ValidationError
 from config import BLANK_DISABLED_TYPES, CARD_TYPES, CATEGORIES, RANK_WEIGHT, RANKS
 from services.card_service import (
     contains_highlight_markers,
@@ -40,12 +40,19 @@ MANAGE_SORT_OPTIONS = [
 ]
 _EMPTY_REVIEW_DATE = "9999-99-99"
 _MANAGE_PAGE_SIZE = 20
+_REGEN_DRAFT = "manage_regeneration"
 
 
 @st.fragment
 def render_manage_page(user_id: str) -> None:
     """カード管理タブを表示"""
     st.title("🗂️ カード管理")
+
+    if draft := st.session_state.get(_REGEN_DRAFT):
+        _render_regeneration(user_id, draft)
+        return
+    if notice := st.session_state.pop("manage_notice", None):
+        st.success(notice)
 
     selected_category = st.selectbox("科目", CATEGORIES, key="manage_category")
     cards = load_cards_by_category(user_id, selected_category)
@@ -361,122 +368,170 @@ def _render_source_card_expander(
                     del st.session_state[f"confirm_del_all_{source_id}"]
                     st.rerun(scope="fragment")
 
-        regen_key = f"regen_cards_{source_id}"
-        regen_context_key = f"regen_context_{source_id}"
-        regen_context = (edited_source, new_type)
-        if (
-            not source_modified
-            or st.session_state.get(regen_context_key) != regen_context
-        ) and regen_key in st.session_state:
-            st.session_state.pop(regen_key, None)
-            st.session_state.pop(regen_context_key, None)
-
-        # 変更した原文からカードを再生成
         if source_modified or requires_regeneration:
             st.markdown("---")
-            if st.button("✨ 変更内容からカードを再生成", key=f"regen_{source_id}"):
-                if new_type in BLANK_DISABLED_TYPES:
-                    is_valid, message, _count = validate_highlight_markers(
-                        edited_source
-                    )
-                    if not is_valid:
-                        st.error(message)
-                        return
-                    new_cards = [
-                        {
-                            "question": edited_source,
-                            "answer": "",
-                            "blank_count": 0,
-                        }
-                    ]
-                else:
-                    new_cards = parse_blanks_from_text(edited_source)
-                if new_cards:
-                    st.session_state[regen_key] = new_cards
-                    st.session_state[regen_context_key] = regen_context
-                else:
-                    st.error("【】で穴埋め箇所を正しく指定してください。")
-
-        regen_cards = st.session_state.get(regen_key)
-        if regen_cards:
-            st.markdown("### 🔄 再生成プレビュー")
-            st.warning(
-                "「この内容で上書き保存」を押すと、既存の紐づきカードは削除され、以下のカードで上書きされます。"
+            if error := st.session_state.pop("manage_regeneration_error", None):
+                st.error(error)
+            st.button(
+                "✨ 変更内容からカードを再生成",
+                key=f"regen_{source_id}",
+                on_click=_start_regeneration,
+                args=(sc, linked_cards, category),
             )
-            cards_to_save = []
-            for i, c in enumerate(regen_cards):
-                if new_type in BLANK_DISABLED_TYPES:
-                    q = st.text_input(
-                        f"新本文 {i + 1}",
-                        value=c["question"],
-                        key=f"regen_q_{source_id}_{i}",
-                    )
-                    a = ""
-                else:
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        q = st.text_input(
-                            f"新問題 {i + 1}",
-                            value=c["question"],
-                            key=f"regen_q_{source_id}_{i}",
-                        )
-                    with c2:
-                        a = st.text_input(
-                            f"新答え {i + 1}",
-                            value=c["answer"],
-                            key=f"regen_a_{source_id}_{i}",
-                        )
-                cards_to_save.append({"question": q, "answer": a})
 
-            if st.button(
-                "💾 この内容で暗記カードを上書き保存",
-                type="primary",
-                key=f"save_regen_{source_id}",
-            ):
-                cards_payload = [
-                    {
-                        "question": c["question"],
-                        "answer": c["answer"],
-                        "title": edited_title,
-                        "category": new_category,
-                        "blank_count": (
-                            0
-                            if new_type in BLANK_DISABLED_TYPES
-                            else count_card_blanks(c["question"])
-                        ),
-                        "card_type": new_type,
-                        "rank": new_rank,
-                        "highlighted_keywords": (
-                            extract_highlight_keywords(c["question"])
-                            if new_type in BLANK_DISABLED_TYPES
-                            else ""
-                        ),
-                    }
-                    for c in cards_to_save
-                    if c["question"]
-                ]
-                try:
-                    replace_source_cards(
-                        user_id,
-                        source_id=source_id,
-                        source_text=edited_source,
-                        title=edited_title,
-                        category=new_category,
-                        card_type=new_type,
-                        old_card_ids=[lc["id"] for lc in linked_cards],
-                        cards=cards_payload,
-                    )
-                except ValidationError as exc:
-                    st.warning(exc.user_message)
-                    return
-                st.session_state.pop(regen_key, None)
-                st.session_state.pop(regen_context_key, None)
-                st.success("再生成したカードで上書き保存しました！")
-                st.rerun(scope="fragment")
-            if st.button("キャンセル", key=f"cancel_regen_{source_id}"):
-                st.session_state.pop(regen_key, None)
-                st.session_state.pop(regen_context_key, None)
-                st.rerun(scope="fragment")
+
+def _start_regeneration(
+    source: dict[str, Any], linked_cards: list[dict[str, Any]], category: str
+) -> None:
+    source_id = source["id"]
+    field_widgets = {
+        "source_text": "source",
+        "title": "title",
+        "category": "cat",
+        "card_type": "type",
+    }
+    edited = {
+        field: st.session_state[f"edit_{widget}_{source_id}"]
+        for field, widget in field_widgets.items()
+    }
+    text = edited["source_text"]
+    if edited["card_type"] in BLANK_DISABLED_TYPES:
+        valid, message, _count = validate_highlight_markers(text)
+        if not valid:
+            st.session_state["manage_regeneration_error"] = message
+            return
+        cards = [{"question": text, "answer": ""}]
+    else:
+        cards = parse_blanks_from_text(text)
+        if not cards:
+            st.session_state["manage_regeneration_error"] = (
+                "【】で穴埋め箇所を正しく指定してください。"
+            )
+            return
+    card_fields = (
+        "id",
+        "question",
+        "answer",
+        "title",
+        "category",
+        "card_type",
+        "rank",
+        "highlighted_keywords",
+    )
+    st.session_state[_REGEN_DRAFT] = {
+        "id": source_id,
+        "expected": {
+            "source": {field: source.get(field) for field in field_widgets},
+            "cards": [
+                {field: card.get(field) for field in card_fields}
+                for card in sorted(linked_cards, key=lambda card: str(card["id"]))
+            ],
+        },
+        "edited": edited,
+        "rank": st.session_state[f"edit_rank_{source_id}"],
+        "cards": cards,
+        "index": 0,
+        "category": category,
+    }
+
+
+def _render_regeneration(user_id: str, draft: dict[str, Any]) -> None:
+    index = draft["index"]
+    cards = draft["cards"]
+    edited = draft["edited"]
+    form_id = f"regeneration_{draft['id']}_{index}"
+    no_blanks = edited["card_type"] in BLANK_DISABLED_TYPES
+    st.subheader("再生成プレビュー")
+    st.caption(f"{edited['title'] or '無題'} · {index + 1} / {len(cards)} 枚")
+    st.info(
+        "同じ問題と答えのカードは進捗を引き継ぎます。置き換えるカードは履歴付きで保管します。"
+    )
+    if error := draft.pop("error", None):
+        st.warning(error)
+
+    with st.form(form_id):
+        st.form_submit_button(
+            f"全{len(cards)}枚を上書き保存",
+            type="primary",
+            on_click=_submit_regeneration,
+            args=(user_id, form_id, "save"),
+        )
+        previous, following, cancel = st.columns(3)
+        previous.form_submit_button(
+            "前のカード",
+            disabled=index == 0,
+            on_click=_submit_regeneration,
+            args=(user_id, form_id, "previous"),
+        )
+        following.form_submit_button(
+            "次のカード",
+            disabled=index + 1 == len(cards),
+            on_click=_submit_regeneration,
+            args=(user_id, form_id, "next"),
+        )
+        cancel.form_submit_button("編集に戻る", on_click=_cancel_regeneration)
+        st.text_area(
+            "本文" if no_blanks else "問題",
+            value=cards[index]["question"],
+            key=f"{form_id}_question",
+        )
+        if not no_blanks:
+            st.text_area("答え", value=cards[index]["answer"], key=f"{form_id}_answer")
+
+
+def _cancel_regeneration() -> None:
+    draft = st.session_state.pop(_REGEN_DRAFT)
+    st.session_state["manage_category"] = draft["category"]
+    edited = draft["edited"]
+    for widget, value in (
+        ("title", edited["title"]),
+        ("source", edited["source_text"]),
+        ("cat", edited["category"]),
+        ("type", edited["card_type"]),
+        ("rank", draft["rank"]),
+    ):
+        st.session_state[f"edit_{widget}_{draft['id']}"] = value
+
+
+def _submit_regeneration(user_id: str, form_id: str, action: str) -> None:
+    draft = st.session_state[_REGEN_DRAFT]
+    cards = draft["cards"]
+    edited = draft["edited"]
+    no_blanks = edited["card_type"] in BLANK_DISABLED_TYPES
+    cards[draft["index"]] = {
+        "question": st.session_state[f"{form_id}_question"],
+        "answer": "" if no_blanks else st.session_state[f"{form_id}_answer"],
+    }
+    if action != "save":
+        draft["index"] += 1 if action == "next" else -1
+        return
+    payload = [
+        {
+            "question": card["question"],
+            "answer": card["answer"],
+            "rank": draft["rank"],
+            "blank_count": 0 if no_blanks else count_card_blanks(card["question"]),
+            "highlighted_keywords": extract_highlight_keywords(card["question"])
+            if no_blanks
+            else "",
+        }
+        for card in cards
+    ]
+    try:
+        replace_source_cards(
+            user_id,
+            source_id=draft["id"],
+            **edited,
+            old_card_ids=[card["id"] for card in draft["expected"]["cards"]],
+            cards=payload,
+            expected=draft["expected"],
+        )
+    except ApplicationError as exc:
+        draft["error"] = exc.user_message
+        return
+    st.session_state.pop(_REGEN_DRAFT)
+    st.session_state["manage_category"] = edited["category"]
+    st.session_state["manage_notice"] = "再生成したカードを保存しました。"
 
 
 def _render_linked_card_row(user_id: str, card: dict, index: int, sc: dict) -> None:

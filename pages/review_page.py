@@ -50,6 +50,9 @@ def render_review_page(user_id: str) -> None:
         st.session_state[_SK_REVIEWED_CARD_IDS] = []
         st.session_state[_SK_REVIEWED_CARD_COUNT] = 0
         st.session_state[_SK_QUOTA_CARD_IDS] = None
+        st.session_state[_SK_SHOW_ANSWER] = None
+        st.session_state[_SK_CURRENT_CARD_INDEX] = 0
+        st.session_state[_SK_SOURCE_REVIEW_INDEX] = 0
 
     # 期日カードの抽出（時刻付き文字列に対応するため先頭10文字だけで比較）
     all_due_cards = [c for c in cards if str(c.get("next_review", ""))[:10] <= today]
@@ -243,8 +246,8 @@ def _move_source_review(offset: int) -> None:
     st.session_state[_SK_SOURCE_REVIEW_INDEX] += offset
 
 
-def _show_answer() -> None:
-    st.session_state[_SK_SHOW_ANSWER] = True
+def _show_answer(question_key: tuple[str, ...]) -> None:
+    st.session_state[_SK_SHOW_ANSWER] = question_key
 
 
 def _render_study_card(
@@ -271,6 +274,12 @@ def _render_study_card(
         st.session_state[_SK_CURRENT_CARD_INDEX] = 0
 
     current_card = due_cards[st.session_state[_SK_CURRENT_CARD_INDEX]]
+    question_key = (
+        local_date_iso(),
+        str(current_card["id"]),
+        current_card["question"],
+        current_card["answer"],
+    )
 
     # カード表示
     is_fav = current_card.get("is_favorite", False)
@@ -285,7 +294,7 @@ def _render_study_card(
         question_html = apply_highlight(current_card["question"], hl_keys)
         show_eval_buttons = True
     else:
-        show_eval_buttons = st.session_state.get(_SK_SHOW_ANSWER, False)
+        show_eval_buttons = st.session_state.get(_SK_SHOW_ANSWER) == question_key
 
     category_value = current_card.get("category", "その他")
     category = safe_category_class(category_value)
@@ -320,6 +329,7 @@ def _render_study_card(
             type="primary",
             width="stretch",
             on_click=_show_answer,
+            args=(question_key,),
         )
     else:
         st.markdown(

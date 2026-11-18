@@ -93,3 +93,72 @@ def test_manage_page_renders_linked_answer_search_result() -> None:
     app = app.text_input(key="unified_search").input("特別な答え").run()
 
     assert app.session_state["visible_sources"] == ["source-1"]
+
+
+_REGENERATION_SCRIPT = r"""
+import importlib
+import streamlit as st
+from application_errors import PersistenceError
+import pages.manage_page as manage
+
+manage = importlib.reload(manage)
+source = {
+    "id": "source-1", "category": "民法", "card_type": "規範",
+    "source_text": "元の【穴】", "title": "架空の原文",
+}
+manage.load_cards_by_category = lambda *args: []
+manage.load_source_cards_by_category = lambda *args: [source]
+
+def save(user, **payload):
+    st.session_state["test_save_payload"] = payload
+    if st.session_state.get("test_fail"):
+        raise PersistenceError("テスト用の保存失敗")
+
+manage.replace_source_cards = save
+manage.render_manage_page("user-a")
+"""
+
+
+def test_regeneration_saves_all_pages_and_keeps_failed_edits() -> None:
+    app = AppTest.from_string(_REGENERATION_SCRIPT).run()
+    source = "について検討する。".join(f"【項目{i}】" for i in range(100))
+    app.text_area(key="edit_source_source-1").input(source).run()
+    app.button(key="regen_source-1").click().run()
+
+    nodes = list(app)
+    save_index = next(
+        i
+        for i, element in enumerate(nodes)
+        if getattr(element, "label", "") == "全20枚を上書き保存"
+    )
+    edit_index = next(
+        i for i, element in enumerate(nodes) if getattr(element, "label", "") == "問題"
+    )
+    assert save_index < edit_index
+    assert len([widget for widget in app.text_area if widget.form_id]) == 2
+    next(widget for widget in app.text_area if widget.label == "答え").input(
+        "先頭を編集"
+    )
+    next(button for button in app.button if button.label == "次のカード").click().run()
+    next(widget for widget in app.text_area if widget.label == "答え").input(
+        "2枚目を編集"
+    )
+    app.session_state["test_fail"] = True
+    next(
+        button for button in app.button if button.label == "全20枚を上書き保存"
+    ).click().run()
+    assert app.warning[0].value == "テスト用の保存失敗"
+    assert (
+        next(widget for widget in app.text_area if widget.label == "答え").value
+        == "2枚目を編集"
+    )
+    payload = app.session_state["test_save_payload"]
+    assert len(payload["cards"]) == 20
+    assert payload["cards"][0]["answer"] == "先頭を編集"
+    assert payload["cards"][1]["answer"] == "2枚目を編集"
+    assert payload["expected"]["source"]["source_text"] == "元の【穴】"
+    app.session_state["test_fail"] = False
+    next(
+        button for button in app.button if button.label == "全20枚を上書き保存"
+    ).click().run()
+    assert app.success[0].value == "再生成したカードを保存しました。"
