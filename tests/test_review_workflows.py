@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from application_errors import MigrationUnavailableError
 from pages import review_page
@@ -79,3 +80,25 @@ def test_review_page_does_not_mutate_session_when_persistence_fails(card) -> Non
     assert session_state["reviewed_card_ids"] == []
     assert session_state["reviewed_source_ids"] == []
     assert session_state["reviewed_card_count"] == 0
+
+
+def test_previous_days_answer_does_not_reveal_new_question() -> None:
+    app = AppTest.from_string(
+        """
+import streamlit as st
+from unittest.mock import patch
+from pages import review_page as page
+card = {"id": "new", "question": "問題______", "answer": "表示前の答え",
+        "next_review": "2026-11-16", "card_type": "規範"}
+assignment = {"card_id": "new", "completed_at": None}
+st.session_state.setdefault("quota_date", "2026-11-15")
+st.session_state.setdefault("show_answer", True)
+with patch.multiple(page, local_date_iso=lambda: "2026-11-16",
+    load_cards=lambda _: [card], get_daily_quota_limit=lambda _: 1,
+    load_daily_assignments=lambda *_: [assignment], sync_daily_assignments=lambda *_: [assignment]):
+    page.render_review_page("user")
+"""
+    ).run()
+    assert all("表示前の答え" not in item.value for item in app.markdown)
+    next(button for button in app.button if button.label == "答えを見る").click().run()
+    assert any("表示前の答え" in item.value for item in app.markdown)

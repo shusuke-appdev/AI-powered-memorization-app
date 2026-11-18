@@ -82,21 +82,22 @@ def replace_source_cards(
     card_type: str | None,
     old_card_ids: list[str],
     cards: list[dict[str, Any]],
+    expected: dict[str, Any] | None = None,
 ) -> CardWorkflowResult:
     """原文と紐づきカード一式を同一トランザクションで置き換える。"""
-    del old_card_ids  # DB側で対象source_idの所有カードを確定する。
-    return _save_bundle(
-        _build_command(
-            "replace",
-            user_id,
-            source_id=source_id,
-            source_text=source_text,
-            title=title,
-            category=category,
-            card_type=card_type,
-            cards=cards,
-        )
+    command = _build_command(
+        "replace",
+        user_id,
+        source_id=source_id,
+        source_text=source_text,
+        title=title,
+        category=category,
+        card_type=card_type,
+        cards=cards,
     )
+    if expected is None:
+        return _save_bundle(command)
+    return _save_bundle(command, expected={**expected, "ids": sorted(old_card_ids)})
 
 
 def delete_source_bundle(user_id: str, source_id: str) -> None:
@@ -160,8 +161,13 @@ def _build_command(
     return command
 
 
-def _save_bundle(command: SourceBundleCommand) -> CardWorkflowResult:
-    result = save_source_bundle_rpc(command.user_id, command.to_rpc_payload())
+def _save_bundle(
+    command: SourceBundleCommand, *, expected: dict[str, Any] | None = None
+) -> CardWorkflowResult:
+    payload = command.to_rpc_payload()
+    if expected is not None:
+        payload["expected"] = expected
+    result = save_source_bundle_rpc(command.user_id, payload)
     return CardWorkflowResult(
         source_count=int(result.get("source_count", 0)),
         card_count=int(result.get("card_count", 0)),

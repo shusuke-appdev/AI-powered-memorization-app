@@ -167,11 +167,13 @@ def import_cards_json(
         source_cards.append(source)
 
     cards: list[dict[str, Any]] = []
+    legacy_count = 0
     for index, item in enumerate(raw_cards, start=1):
         if not isinstance(item, dict):
             errors.append(f"カード{index}: オブジェクト形式ではありません。")
             continue
         card = _card_from_import_item(item)
+        legacy_count += _normalize_legacy_reading_card(card)
         source_export_id = card.get("source_export_id", "")
         if source_export_id and source_export_id not in source_ids:
             errors.append(f"カード{index}: 参照先の原文カードがありません。")
@@ -206,7 +208,7 @@ def import_cards_json(
             "skipped": skipped,
             "error": errors[0],
             "errors": errors,
-            "warnings": [],
+            "warnings": _legacy_reading_warnings(legacy_count),
             "version": version,
             "reset_progress": reset_progress,
         }
@@ -218,7 +220,7 @@ def import_cards_json(
         "error": None,
         "version": version,
         "errors": [],
-        "warnings": [],
+        "warnings": _legacy_reading_warnings(legacy_count),
         "reset_progress": reset_progress,
     }
 
@@ -255,6 +257,7 @@ def import_cards_csv(
             }
         cards: list[dict[str, Any]] = []
         errors: list[str] = []
+        legacy_count = 0
 
         for index, row in enumerate(reader, start=2):
             card_type = _optional_str(row.get("card_type"))
@@ -270,10 +273,14 @@ def import_cards_csv(
                 "question": _as_str(row.get("question", "")),
                 "answer": _as_str(row.get("answer", "")),
                 "highlighted_keywords": _as_str(row.get("highlighted_keywords", "")),
-                "blank_count": _as_int(row.get("blank_count"), 1),
+                "blank_count": _as_int(
+                    row.get("blank_count"),
+                    0 if card_type in BLANK_DISABLED_TYPES else 1,
+                ),
                 "is_favorite": _as_bool(row.get("is_favorite"), False),
             }
 
+            legacy_count += _normalize_legacy_reading_card(card)
             if reset_progress:
                 card.update(_initial_progress())
             else:
@@ -302,7 +309,10 @@ def import_cards_csv(
         "skipped": skipped,
         "error": errors[0] if errors else None,
         "errors": errors,
-        "warnings": ["CSVでは原文カードとの紐づきは復元されません。"],
+        "warnings": [
+            "CSVでは原文カードとの紐づきは復元されません。",
+            *_legacy_reading_warnings(legacy_count),
+        ],
         "reset_progress": reset_progress,
         "version": "csv",
     }
@@ -407,6 +417,23 @@ def _filter_duplicate_cards(
         new_cards.append(card)
         existing_set.add(key)
     return new_cards, skipped
+
+
+def _normalize_legacy_reading_card(card: dict[str, Any]) -> bool:
+    if card["card_type"] not in BLANK_DISABLED_TYPES:
+        return False
+    if not card["answer"] and card["blank_count"] == 0:
+        return False
+    card.update(answer="", blank_count=0)
+    return True
+
+
+def _legacy_reading_warnings(count: int) -> list[str]:
+    if not count:
+        return []
+    return [
+        f"旧形式の知識・類型カード {count} 件は未使用の答えと穴数を整理して取り込みます。元ファイルを保管してください。"
+    ]
 
 
 def _initial_progress() -> dict[str, Any]:

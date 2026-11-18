@@ -618,12 +618,21 @@ def save_source_bundle_rpc(user_id: str, payload: dict[str, Any]) -> dict[str, A
         result = (
             get_supabase()
             .rpc(
-                "save_source_bundle",
+                "replace_source_bundle_checked"
+                if "expected" in payload
+                else "save_source_bundle",
                 {"p_user_id": user_id, "p_bundle": payload},
             )
             .execute()
         )
     except Exception as exc:
+        if "expected" in payload:
+            if str(getattr(exc, "code", "")) == "40001":
+                raise PersistenceError(
+                    "別の画面でカードが変更されました。下書きを確認して作り直してください。"
+                ) from exc
+            if _is_missing_database_object_error(exc, "replace_source_bundle_checked"):
+                raise MigrationUnavailableError() from exc
         raise PersistenceError("カードを保存できませんでした。") from exc
     rows = _rpc_rows(result)
     if not rows:

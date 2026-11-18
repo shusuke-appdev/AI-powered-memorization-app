@@ -6,6 +6,30 @@ from services.time_service import local_date_iso
 from storage import _fetch_all_pages
 
 
+def test_legacy_knowledge_backup_preserves_progress_and_warns() -> None:
+    result = import_cards_json(
+        json.dumps(
+            {
+                "version": "2.0",
+                "cards": [
+                    {
+                        "card_type": "知識",
+                        "question": "本文",
+                        "answer": "旧仕様の答え",
+                        "blank_count": 5,
+                        "interval": 19,
+                    }
+                ],
+            }
+        )
+    )
+    assert result["errors"] == []
+    assert "未使用の答え" in result["warnings"][0]
+    assert result["cards"][0]["answer"] == ""
+    assert result["cards"][0]["blank_count"] == 0
+    assert result["cards"][0]["interval"] == 19
+
+
 def test_json_round_trip_preserves_source_mapping_and_card_metadata() -> None:
     source_cards = [
         {
