@@ -126,7 +126,8 @@ def test_published_release_checks_routes_assets_and_anonymous_rpc() -> None:
 
     def request(resource, timeout):
         assert timeout == 10
-        url = resource if isinstance(resource, str) else resource.full_url
+        assert resource.get_header("User-agent") == "memorization-app-health/1.0"
+        url = resource.full_url
         path = urlparse(url).path
         paths.append(path)
         if path in ("/auth/v1/settings", "/rest/v1/rpc/study_api"):
