@@ -43,13 +43,16 @@ export function exportCsv(cards: Card[]): string {
     .map(card => keys.map(key => quote(card[key])).join(','))].join('\r\n');
 }
 
-export function prepareImport(text: string, csv: boolean, existing: Card[]) {
+export function prepareImport(text: string, csv: boolean, existing: Pick<Card,'question'|'answer'|'study_archived_at'>[]) {
   const raw = csv ? {version:'csv',cards:readCsv(text),source_cards:[]} : JSON.parse(text);
   if (!raw || typeof raw !== 'object') throw new Error('バックアップの形式を確認してください。');
   if (String(raw.version) === '3.0') {
-    if (!['sources','cards','targets','assignments','presets','replaced_cards','legacy_assignments'].every(key => Array.isArray(raw[key]))) {
+    if (!['sources','cards','targets','assignments','presets','replaced_cards','legacy_assignments'].every(key =>
+      Array.isArray(raw[key]) && raw[key].every((row: unknown) => row && typeof row === 'object' && !Array.isArray(row)))) {
       throw new Error('完全バックアップに必要な項目がありません。');
     }
+    const quota = Number(raw.quota);
+    if (!Number.isInteger(quota) || quota<1 || quota>100) throw new Error('バックアップの復習上限を確認してください。');
     return {mode:'restore',payload:raw, cards:raw.cards.length, sources:raw.sources.length, warnings:['完全バックアップは空のデッキに復元します。']};
   }
   if (!['1','2','csv'].includes(String(raw.version ?? '1').split('.')[0]) ||

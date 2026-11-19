@@ -27,6 +27,7 @@ jobs:
 
       - name: Run health check
         env:
+          APP_HEALTH_URL: https://memorization-web.shusukekitaoka1635.workers.dev
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GH_TOKEN: ${{ github.token }}

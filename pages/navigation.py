@@ -7,7 +7,6 @@ from functools import partial
 import streamlit as st
 
 from pages.add_card_page import render_add_card_page
-from pages.listen_page import render_listen_page
 from pages.login_page import show_login_page
 from pages.manage_page import render_manage_page
 from pages.review_page import render_review_page
@@ -31,12 +30,6 @@ def build_authenticated_pages(user_id: str) -> list[st.Page]:
             url_path="add",
         ),
         st.Page(
-            partial(render_listen_page, user_id),
-            title="聞き流し",
-            icon="🎧",
-            url_path="listen",
-        ),
-        st.Page(
             partial(render_manage_page, user_id),
             title="カード管理",
             icon="🗂️",
@@ -57,7 +50,6 @@ def build_login_pages() -> list[st.Page]:
     for title, path, is_default in (
         ("ログイン", "review", True),
         ("ログイン", "add", False),
-        ("ログイン", "listen", False),
         ("ログイン", "manage", False),
         ("ログイン", "stats", False),
     ):

@@ -1,8 +1,11 @@
-"""Read-only operational health check for GitHub CLI and Supabase."""
+"""Read-only operational health check for the published app, GitHub and Supabase."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -10,7 +13,9 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.error import HTTPError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 EXIT_OK = 0
 EXIT_CONFIG = 2
@@ -19,6 +24,7 @@ EXIT_SUPABASE = 4
 EXIT_GITHUB_CLI = 5
 EXIT_GITHUB_AUTH = 6
 EXIT_GITHUB_API = 7
+EXIT_APP = 8
 
 
 @dataclass(frozen=True)
@@ -174,11 +180,83 @@ def check_github_cli(environ: Mapping[str, str] | None = None) -> CheckResult:
     return CheckResult(ok=True, message="GitHub CLI/API check passed.")
 
 
+def check_published_app(url: str, supabase_url: str) -> CheckResult:
+    """Verify the release, Google provider and anonymous API boundary without signing in."""
+    base = url.rstrip("/")
+    try:
+        with urlopen(base + "/release.json", timeout=10) as response:
+            release = json.load(response)
+        if not re.fullmatch(r"[a-f0-9]{40}", release["revision"]):
+            raise ValueError("invalid release identifier")
+        pages = ("/", "/review", "/practice", "/manage", "/add", "/stats")
+        with urlopen(base + "/", timeout=10) as response:
+            index = response.read()
+            if not response.headers.get("Content-Security-Policy"):
+                raise ValueError("missing CSP")
+        if hashlib.sha256(index).hexdigest() != release["index"]:
+            raise ValueError("index differs from release")
+        for path in pages[1:]:
+            with urlopen(base + path, timeout=10) as response:
+                if response.read() != index:
+                    raise ValueError("direct link differs from release")
+        for path in ("/listen", "/listen/"):
+            with urlopen(base + path, timeout=10) as response:
+                if urlparse(response.geturl()).path != "/review":
+                    raise ValueError("retired link did not redirect")
+        public_key = None
+        assets = release["assets"]
+        references = {
+            path.decode() for path in re.findall(rb'["\']/(assets/[^"\']+)["\']', index)
+        }
+        if not references or not references.issubset(assets):
+            raise ValueError("index assets missing from release")
+        for filename, digest in assets.items():
+            if not re.fullmatch(r"assets/[A-Za-z0-9_.-]+\.(js|css)", filename):
+                raise ValueError("invalid asset reference")
+            with urlopen(base + "/" + filename, timeout=10) as response:
+                bundle = response.read()
+            if hashlib.sha256(bundle).hexdigest() != digest:
+                raise ValueError("asset differs from release")
+            match = re.search(rb"sb_publishable_[A-Za-z0-9_-]{20,}", bundle)
+            if match and supabase_url.rstrip("/").encode() in bundle:
+                public_key = match.group().decode("ascii")
+        if not public_key:
+            raise ValueError("database configuration differs from deploy target")
+        headers = {"apikey": public_key, "Content-Type": "application/json"}
+        with urlopen(
+            Request(supabase_url.rstrip("/") + "/auth/v1/settings", headers=headers),
+            timeout=10,
+        ) as response:
+            if json.load(response).get("external", {}).get("google") is not True:
+                raise ValueError("Google sign-in disabled")
+        query = Request(
+            supabase_url.rstrip("/") + "/rest/v1/rpc/study_api",
+            data=b'{"p_action":"quota_view","p_payload":{}}',
+            headers=headers,
+        )
+        try:
+            with urlopen(query, timeout=10):
+                raise ValueError("anonymous API returned data")
+        except HTTPError as error:
+            if error.code not in (401, 403):
+                raise
+    except (OSError, ValueError, KeyError, TypeError):
+        return CheckResult(
+            ok=False,
+            message="公開アプリの配信・認証の確認に失敗しました。",
+            exit_code=EXIT_APP,
+        )
+    return CheckResult(
+        ok=True, message=f"Published app verified ({release['revision'][:8]})."
+    )
+
+
 def run_health_check(
     environ: Mapping[str, str] | None = None,
     secrets_path: Path = Path(".streamlit/secrets.toml"),
 ) -> list[CheckResult]:
-    url, key = load_supabase_credentials(environ=environ, secrets_path=secrets_path)
+    env = os.environ if environ is None else environ
+    url, key = load_supabase_credentials(environ=env, secrets_path=secrets_path)
     results = [check_supabase_credentials(url, key)]
 
     if results[-1].ok:
@@ -186,7 +264,9 @@ def run_health_check(
     if results[-1].ok:
         results.append(check_supabase_read(url, key))
 
-    results.append(check_github_cli(environ=environ))
+    results.append(check_github_cli(environ=env))
+    if app_url := env.get("APP_HEALTH_URL"):
+        results.append(check_published_app(app_url, url))
     return results
 
 

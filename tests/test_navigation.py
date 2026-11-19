@@ -11,7 +11,6 @@ def renderer(name):
 
 navigation.render_review_page = renderer("review")
 navigation.render_add_card_page = renderer("add")
-navigation.render_listen_page = renderer("listen")
 navigation.render_manage_page = renderer("manage")
 navigation.render_stats_page = renderer("stats")
 st.navigation(navigation.build_authenticated_pages("user-a"), position="top").run()
@@ -37,7 +36,6 @@ st.navigation(pages, position="hidden").run()
     assert app.session_state["login_paths"] == [
         "",
         "add",
-        "listen",
         "manage",
         "stats",
     ]

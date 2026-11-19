@@ -92,6 +92,12 @@ def _resolve_credentials() -> tuple[str, str]:
     return url, key
 
 
+def uses_reference_database() -> bool:
+    """The production database grants this client read-only study access."""
+    url, _ = _resolve_credentials()
+    return url.rstrip("/") == "https://zozsikyinpasapuxjbtg.supabase.co"
+
+
 def get_supabase() -> Client:
     """
     Supabaseクライアントを取得（リトライロジック付き）

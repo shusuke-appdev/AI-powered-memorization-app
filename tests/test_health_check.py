@@ -1,7 +1,12 @@
+import hashlib
+import io
+import json
 import socket
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
+from urllib.parse import urlparse
 
 import scripts.health_check as health_check
 
@@ -99,3 +104,52 @@ def test_github_actions_api_success() -> None:
         result = health_check.check_github_cli(environ=environ)
 
     assert result.ok
+
+
+def test_published_release_checks_routes_assets_and_anonymous_rpc() -> None:
+    app = "https://study.example.test"
+    db = "https://fixture.supabase.co"
+    public_key = "sb_publishable_examplefixture1234567890"
+    assets = {
+        "assets/index.js": f"console.log('{db}', '{public_key}');".encode(),
+        "assets/index.css": b"body{color:#242424}",
+    }
+    index = b'<script src="/assets/index.js"></script><link href="/assets/index.css">'
+    release = {
+        "revision": "1" * 40,
+        "index": hashlib.sha256(index).hexdigest(),
+        "assets": {
+            name: hashlib.sha256(data).hexdigest() for name, data in assets.items()
+        },
+    }
+    paths: list[str] = []
+
+    def request(resource, timeout):
+        assert timeout == 10
+        url = resource if isinstance(resource, str) else resource.full_url
+        path = urlparse(url).path
+        paths.append(path)
+        if path in ("/auth/v1/settings", "/rest/v1/rpc/study_api"):
+            assert resource.get_header("Apikey") == public_key
+        if path == "/rest/v1/rpc/study_api":
+            assert json.loads(resource.data)["p_action"] == "quota_view"
+            raise HTTPError(url, 403, "Forbidden", {}, None)
+        content = {
+            "/release.json": json.dumps(release).encode(),
+            "/auth/v1/settings": b'{"external":{"google":true}}',
+            **{"/" + name: data for name, data in assets.items()},
+        }
+        result = io.BytesIO(content.get(path, index))
+        result.headers = {"Content-Security-Policy": "default-src 'self'"}
+        result.geturl = lambda: app + "/review"
+        return result
+
+    with patch("scripts.health_check.urlopen", side_effect=request):
+        assert health_check.check_published_app(app, db).ok
+        assert "/listen/" in paths
+        assert "/practice" in paths
+        assert "/assets/index.css" in paths
+        assets["assets/index.css"] = b"tampered"
+        assert (
+            health_check.check_published_app(app, db).exit_code == health_check.EXIT_APP
+        )

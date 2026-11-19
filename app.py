@@ -19,6 +19,7 @@ from database import (
     DatabaseConnectionError,
     as_database_connection_error,
     reset_connection,
+    uses_reference_database,
 )
 from pages.navigation import build_authenticated_pages, build_login_pages
 from pages.sidebar import render_sidebar
@@ -34,12 +35,6 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="AI 暗記カード", page_icon="🧠", layout="wide")
 
-# Cookie Controller——シングルトンで予期しないrerunを防止
-if "cookie_controller" not in st.session_state:
-    st.session_state.cookie_controller = CookieController()
-cookie_controller = st.session_state.cookie_controller
-flush_pending_cookie_action(st.session_state, cookie_controller)
-
 # ベーススタイルを適用
 apply_base_styles()
 
@@ -49,6 +44,11 @@ apply_base_styles()
 
 def check_auth() -> bool:
     """認証状態をチェック"""
+    if "cookie_controller" not in st.session_state:
+        st.session_state.cookie_controller = CookieController()
+    cookie_controller = st.session_state.cookie_controller
+    flush_pending_cookie_action(st.session_state, cookie_controller)
+
     if st.session_state.pop("_force_logged_out_once", False):
         return False
     if "user_id" in st.session_state and st.session_state.user_id:
@@ -74,10 +74,19 @@ def show_main_app() -> None:
     user_id: str = st.session_state.user_id
     username: str = st.session_state.get("username", "ユーザー")
 
-    # サイドバー
     render_sidebar(user_id, username)
-
     st.navigation(build_authenticated_pages(user_id), position="top").run()
+
+
+def show_web_entry() -> None:
+    """Keep old bookmarks usable without exposing the legacy login."""
+    st.title("暗記カード")
+    st.info("カードの参照・復習・編集は、GoogleログインでWeb版から利用できます。")
+    st.link_button(
+        "Web版を開く",
+        "https://memorization-web.shusukekitaoka1635.workers.dev",
+        type="primary",
+    )
 
 
 def show_database_error(error: DatabaseConnectionError) -> None:
@@ -94,7 +103,18 @@ def show_database_error(error: DatabaseConnectionError) -> None:
 # ============ アプリケーション実行 ============
 
 try:
-    if check_auth():
+    if uses_reference_database():
+        pages = [
+            st.Page(
+                show_web_entry,
+                title="Web版の案内",
+                url_path=path,
+                default=path == "home",
+            )
+            for path in ("home", "review", "add", "listen", "manage", "stats")
+        ]
+        st.navigation(pages, position="hidden").run()
+    elif check_auth():
         show_main_app()
     else:
         st.navigation(build_login_pages(), position="hidden").run()
