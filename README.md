@@ -1,5 +1,9 @@
 # AI 暗記カード
 
+## 本番Web版
+
+[暗記カードを開く](https://memorization-web.shusukekitaoka1635.workers.dev)。招待済みGoogleアカウントでログインします。[利用ガイド](USER_GUIDE.md) と [Web版の開発・配信](web/README.md) を参照してください。以下は旧Streamlit版の開発情報です。
+
 法律学習向けの穴埋め式フラッシュカードアプリです。Streamlit で画面を構成し、Supabase PostgreSQL にユーザー、原文カード、暗記カード、セッションを保存します。カード生成は、ユーザーが `【】` で穴埋め箇所を指定する手動フローです。Gemini API とアプリ内AI機能は使用しません。
 
 原文単位で復習する新Web版は [web](web/README.md) にあります。公開中のStreamlit版から切り替える場合は、データの保全と移行手順を先に確認してください。
@@ -18,7 +22,6 @@
 - 原文単位のお気に入り
 - カード編集、削除、原文からの再生成
 - 統計表示とJSON/CSVエクスポート/インポート
-- Web Speech API を使った原文聞き流し
 - ダークモードとモバイル向けCSS
 
 ## 技術スタック
@@ -55,7 +58,6 @@ app.py                     Streamlitアプリの入口、認証判定、タブ�
 auth.py                    ユーザー、ノルマ、セッション管理
 database.py                Supabase接続と接続エラー処理
 storage.py                 単一行CRUDとトランザクションRPC呼び出し
-components.py              聞き流し用HTML/JavaScriptコンポーネント
 config.py                  カテゴリ、カードタイプ、ランク、アルゴリズム定数
 export_import.py           JSON/CSVの変換ロジック
 stats.py                   学習統計の計算

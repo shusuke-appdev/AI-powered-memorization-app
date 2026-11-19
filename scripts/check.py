@@ -54,7 +54,6 @@ def main() -> None:
             "-q",
             "app.py",
             "auth.py",
-            "components.py",
             "config.py",
             "database.py",
             "export_import.py",

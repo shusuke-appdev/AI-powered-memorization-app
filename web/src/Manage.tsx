@@ -1,8 +1,10 @@
-import {useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {api, message} from './api.ts';
 import {generate, matchesVariant, noBlanks, ranks, subjects, tagsFrom, types, variantFromLayout} from './cards.ts';
-import type {Card, Library, Segment, Source, Variant} from './cards.ts';
+import type {Card, Segment, Source, Variant} from './cards.ts';
 import {Highlight, Prompt} from './Study.tsx';
+import {confirmDiscard} from './navigation.ts';
+import {useStudyQuery} from './query.ts';
 
 const PAGE_SIZE = 20;
 
@@ -26,25 +28,30 @@ function metadata(edit: Edit, linked: Card[]): Metadata {
   };
 }
 
-export function CardEditor({edit, library, done, cancel}: {
-  edit: Edit; library: Library; done: (notice: string) => Promise<void>; cancel: () => void;
+export function CardEditor({edit,cards,tagOptions,done,cancel,setDirty}: {
+  edit: Edit; cards: Card[]; tagOptions: {category:string;tag:string}[]; done: (notice:string) => void;
+  cancel: () => void; setDirty: (value:boolean) => void;
 }) {
   const {source,orphan} = edit;
-  const linked = library.cards.filter(card => card.source_id === source?.id && !card.study_archived_at);
+  const linked = source ? cards.filter(card => card.source_id === source.id && !card.study_archived_at) : [];
   const [meta,setMeta] = useState(() => metadata(edit,linked));
   const [text,setText] = useState(source?.source_text ?? orphan?.question ?? '');
   const [answer,setAnswer] = useState(orphan?.answer ?? '');
   const [draft,setDraft] = useState<Variant[]>([]);
-  const [requestId,setRequestId] = useState('');
   const [index,setIndex] = useState(0);
   const [editing,setEditing] = useState(false);
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(false);
   const [archive,setArchive] = useState(false);
-  const tags = [...new Set([
-    ...library.sources.filter(item => item.category === meta.category).flatMap(item => item.study_tags),
-    ...library.cards.filter(card => !card.source_id && !card.study_archived_at && card.category === meta.category).flatMap(card => card.study_tags),
-  ])].sort((a,b) => a.localeCompare(b,'ja'));
+  const pending = useRef(false);
+  const request = useRef<{signature:string;id:string} | undefined>(undefined);
+  const dirty = draft.length > 0 || JSON.stringify(meta) !== JSON.stringify(metadata(edit,linked))
+    || text !== (source?.source_text ?? orphan?.question ?? '') || answer !== (orphan?.answer ?? '');
+  useEffect(() => {
+    setDirty(dirty);
+    return () => setDirty(false);
+  },[dirty,setDirty]);
+  const tags = tagOptions.filter(row => row.category === meta.category).map(row => row.tag);
 
   function field<K extends keyof Metadata>(key: K,value: Metadata[K]) {
     setMeta(current => ({...current,[key]:value}));
@@ -53,7 +60,6 @@ export function CardEditor({edit, library, done, cancel}: {
   function regenerate() {
     try {
       setDraft(generate(text,meta.card_type));
-      setRequestId(crypto.randomUUID());
       setIndex(0);
       setEditing(false);
       setError('');
@@ -69,25 +75,26 @@ export function CardEditor({edit, library, done, cancel}: {
   }
 
   async function save(mode: 'archive' | 'save_orphan' | 'save_bundle' | 'source_metadata') {
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError('');
     try {
       const item = source ?? orphan;
       const info = {...meta,tags:tagsFrom(meta.tags),id:item?.id,version:item?.study_version};
-      if (mode === 'archive') {
-        await api(mode,{...info,source:!!source});
-      } else if (mode === 'save_orphan') {
-        await api(mode,{...info,question:text,answer});
-      } else if (mode === 'source_metadata') {
-        await api(mode,info);
-      } else {
-        await api(mode,{...info,source_text:text,variants:draft,request_id:requestId});
-      }
-      await done(mode === 'archive' ? '参照用に保管しました。' : '保存しました。');
+      const payload = mode === 'archive' ? {...info,source:!!source}
+        : mode === 'save_orphan' ? {...info,question:text,answer}
+          : mode === 'source_metadata' ? info
+            : {...info,source_text:text,variants:draft};
+      const signature = JSON.stringify([mode,payload]);
+      if (request.current?.signature !== signature) request.current={signature,id:crypto.randomUUID()};
+      await api(mode,{...payload,request_id:request.current.id});
+      setDirty(false);
+      done(mode === 'archive' ? '参照用に保管しました。' : '保存しました。');
     } catch (err) {
       setError(message(err));
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -120,7 +127,7 @@ export function CardEditor({edit, library, done, cancel}: {
       <Prompt layout={current.layout} open={true} whole={noBlanks(meta.card_type)}/>
       {editing && <div className="parts-editor">{current.layout.map((part,i) =>
         <label className="field" key={i}>{typeof part === 'string' ? `本文 ${i+1}` : `穴 ${part.hole} の答え`}
-          <textarea rows={typeof part === 'string' ? 3 : 1} value={typeof part === 'string' ? part : part.answer}
+          <textarea disabled={busy} rows={typeof part === 'string' ? 3 : 1} value={typeof part === 'string' ? part : part.answer}
             onChange={event => replacePart(i,typeof part === 'string' ? event.target.value : {...part,answer:event.target.value})}/>
         </label>,
       )}</div>}
@@ -130,7 +137,7 @@ export function CardEditor({edit, library, done, cancel}: {
   const onlyMetadata = !!source && text === source.source_text && meta.card_type === source.card_type;
   return <section>
     <header className="page-title"><div><h1>{source || orphan ? 'カードを編集' : 'カードを追加'}</h1></div>
-      <button disabled={busy} onClick={cancel}>一覧に戻る</button></header>
+      <button disabled={busy} onClick={() => {if (!dirty || confirmDiscard()) cancel();}}>一覧に戻る</button></header>
     <label className="field">タイトル<input value={meta.title} onChange={event => field('title',event.target.value)}/></label>
     <div className="fieldset-grid">
       <SelectField label="科目" choices={subjects} value={meta.category} change={value => field('category',value)}/>
@@ -164,76 +171,92 @@ export function CardEditor({edit, library, done, cancel}: {
   </section>;
 }
 
-export function ManagePage({library, reload, add}: {library: Library; reload: () => Promise<void>; add?: boolean}) {
-  const [edit,setEdit] = useState<Edit | null>(add ? {} : null);
+type ManageRow = {
+  id:string; source:boolean; title:string | null; category:string | null; card_type:string | null;
+  study_tags:string[]; caption:string; card_count:number; rank:string; favorite:boolean;
+};
+type Listing = {total:number; archives:number; items:ManageRow[]};
+type Detail = {source:Source | null; cards:Card[]};
+type Archive = {id:string; title:string | null; rank:string | null};
+type History = {recent:{day:string;grades:Record<string,number>}[];legacy:{assignment_date:string;quality:number | null}[]};
+
+function Pages({page,total,change}: {page:number;total:number;change:(value:number) => void}) {
+  const pages = Math.ceil(total/PAGE_SIZE);
+  return pages > 1 && <div className="actions pagination">
+    <button disabled={!page} onClick={() => change(page-1)}>前のページ</button>
+    <span>{page+1} / {pages}</span>
+    <button disabled={page+1 >= pages} onClick={() => change(page+1)}>次のページ</button>
+  </div>;
+}
+
+export function ManagePage({add,setDirty}: {add?:boolean;setDirty:(value:boolean) => void}) {
+  const [selection,setSelection] = useState<{id:string;source:boolean} | 'new' | null>(add ? 'new' : null);
   const [query,setQuery] = useState('');
   const [subject,setSubject] = useState('');
   const [type,setType] = useState('');
   const [sort,setSort] = useState('title');
   const [page,setPage] = useState(0);
+  const [archivePage,setArchivePage] = useState(0);
   const [archived,setArchived] = useState(false);
   const [notice,setNotice] = useState('');
   const [error,setError] = useState('');
   const [changing,setChanging] = useState('');
-  const needle = query.trim().toLowerCase();
-  const active = library.cards.filter(card => !card.study_archived_at);
-  const groups = new Map<string, Card[]>();
-  for (const card of active) {
-    if (!card.source_id) continue;
-    const group = groups.get(card.source_id) ?? [];
-    group.push(card);
-    groups.set(card.source_id,group);
-  }
-  const items = [
-    ...library.sources.map(source => {
-      const cards = groups.get(source.id) ?? [];
-      const rank = ranks.find(rank => cards.some(card => card.rank === rank)) ?? 'B';
-      return {
-        item:source, source:true, content:source.source_text, count:cards.length, rank,
-        favorite:source.study_favorite || cards.some(card => card.is_favorite),
-        search:[source.title,source.source_text,...source.study_tags,...cards.flatMap(card => [card.question,card.answer])],
-      };
-    }),
-    ...active.filter(card => !card.source_id).map(card => ({
-      item:card, source:false, content:card.question, count:1, rank:card.rank ?? 'B', favorite:card.is_favorite,
-      search:[card.title,card.question,card.answer,...card.study_tags],
-    })),
-  ].filter(row => (!subject || (row.item.category ?? 'その他') === subject) && (!type || row.item.card_type === type) &&
-    (!needle || row.search.some(value => value?.toLowerCase().includes(needle))));
-  const dates = new Map(library.targets.map(target => [target.id,target.next_review]));
-  items.sort((a,b) => {
-    const byTitle = (a.item.title ?? a.content).localeCompare(b.item.title ?? b.content,'ja');
-    if (sort === 'rank') return ranks.indexOf(a.rank)-ranks.indexOf(b.rank) || byTitle;
-    if (sort === 'favorite') return Number(b.favorite)-Number(a.favorite) || byTitle;
-    if (sort === 'due') return (dates.get(a.item.id) ?? '9999').localeCompare(dates.get(b.item.id) ?? '9999') || byTitle;
-    return byTitle;
-  });
-  const maxPage = Math.max(0,Math.ceil(items.length/PAGE_SIZE)-1);
-  const currentPage = Math.min(page,maxPage);
+  const pending = useRef(false);
+  const list = useStudyQuery<Listing>('manage_list',{query,subject,type,sort,offset:page*PAGE_SIZE},!add,query ? 220 : 0);
+  const archives = useStudyQuery<Archive[]>('archive_list',{offset:archivePage*PAGE_SIZE},archived && !selection);
+  const detail = useStudyQuery<Detail>('manage_detail',{id:selection && selection !== 'new' ? selection.id : null},!!selection && selection !== 'new');
+  const options = useStudyQuery<{tags:{category:string;tag:string}[]}>('practice_options',{},!!selection);
+  const total = list.data?.total;
+  useEffect(() => {
+    if (total !== undefined && page > 0 && page*PAGE_SIZE >= total) {
+      setPage(Math.max(0,Math.ceil(total/PAGE_SIZE)-1));
+    }
+  },[page,total]);
 
-  async function favorite(item: typeof items[number]) {
-    setChanging(item.item.id);
+  async function favorite(item: ManageRow) {
+    if (pending.current) return;
+    pending.current = true;
+    setChanging(item.id);
     setError('');
     try {
-      await api('favorite',{id:item.item.id,source:item.source,favorite:!item.favorite});
-      await reload();
+      await api('favorite',{id:item.id,source:item.source,favorite:!item.favorite,request_id:crypto.randomUUID()});
+      list.refresh();
     } catch (err) {
       setError(message(err));
     } finally {
+      pending.current = false;
       setChanging('');
     }
   }
 
-  if (edit) return <CardEditor edit={edit} library={library} cancel={() => setEdit(null)} done={async text => {
-    await reload();
-    setNotice(text);
-    setEdit(null);
-  }}/>;
+  if (selection) {
+    if (selection !== 'new' && !detail.data) return <>
+      {detail.loading && <p role="status">原文とカードを読み込み中…</p>}
+      {detail.error && <p role="alert">{detail.error} <button onClick={detail.refresh}>再読み込み</button></p>}
+      <button onClick={() => setSelection(null)}>一覧に戻る</button>
+    </>;
+    const row = detail.data;
+    const edit: Edit = selection === 'new' ? {} : selection.source
+      ? {source:row?.source ?? undefined} : {orphan:row?.cards[0]};
+    if (selection !== 'new' && !edit.source && !edit.orphan) return <p role="alert">このカードは変更されています。 <button onClick={() => {
+      setSelection(null);list.refresh();
+    }}>一覧に戻る</button></p>;
+    return <CardEditor key={selection === 'new' ? 'new' : selection.id} edit={edit} cards={row?.cards ?? []}
+      tagOptions={options.data?.tags ?? []} setDirty={setDirty} cancel={() => setSelection(null)} done={text => {
+        setNotice(text);setSelection(null);list.refresh();archives.refresh();
+      }}/>;
+  }
 
-  const archives = library.cards.filter(card => !!card.study_archived_at);
+  if (add) return <>
+    <header className="page-title"><h1>カードを追加</h1></header>
+    {notice && <p role="status" className="notice">{notice}</p>}
+    <div className="actions"><button className="primary" onClick={() => setSelection('new')}>カードを追加</button>
+      <a href="/manage">カード管理を開く</a></div>
+  </>;
+
   return <>
-    <header className="page-title"><div><h1>カード管理</h1><p>{items.length}件</p></div>
-      <button className="primary" onClick={() => setEdit({})}>カードを追加</button></header>
+    <header className="page-title"><div><h1>カード管理</h1>{total !== undefined && <p>{total}件</p>}</div>
+      <button className="primary" onClick={() => setSelection('new')}>カードを追加</button></header>
     {notice && <p role="status" className="notice">{notice}</p>}
     {error && <p role="alert" className="notice">{error}</p>}
     <div className="fieldset-grid">
@@ -245,54 +268,59 @@ export function ManagePage({library, reload, add}: {library: Library; reload: ()
         <option value="">全タイプ</option>{types.map(value => <option key={value}>{value}</option>)}
       </select></label>
       <label className="field">並び順<select value={sort} onChange={event => {setSort(event.target.value);setPage(0);}}>
-        <option value="title">50音順</option><option value="favorite">お気に入り優先</option>
+        <option value="title">タイトル順</option><option value="favorite">お気に入り優先</option>
         <option value="rank">重要度順</option><option value="due">復習日が近い順</option>
       </select></label>
     </div>
+    {list.loading && <p role="status">カードを読み込み中…</p>}
+    {list.error && <p role="alert">{notice ? '保存済みです。表示を更新してください。' : list.error} <button onClick={list.refresh}>再読み込み</button></p>}
     <ul className="library-list">
-      {items.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE).map(row => <li key={row.item.id}>
-        <div><span className="category">{row.item.category || 'その他'}</span>
-          <h2>{row.item.title || row.content.slice(0,40) || '無題'}</h2>
-          <p>{row.rank} · {row.item.card_type ?? '旧形式'} · {row.count}枚
-            {row.item.study_tags.length > 0 && ` · ${row.item.study_tags.join('、')}`}</p>
+      {list.data?.items.map(row => <li key={row.id}>
+        <div><span className="category">{row.category || 'その他'}</span>
+          <h2>{row.title || row.caption || '無題'}</h2>
+          <p>{row.rank} · {row.card_type ?? '旧形式'} · {row.card_count}枚
+            {row.study_tags.length > 0 && ` · ${row.study_tags.join('、')}`}</p>
         </div>
         <div className="actions">
-          <button disabled={changing === row.item.id} onClick={() => void favorite(row)}>{row.favorite ? '★ お気に入り' : '☆ お気に入り'}</button>
-          <button onClick={() => setEdit(row.source ? {source:row.item as Source} : {orphan:row.item as Card})}>編集</button>
+          <button disabled={!!changing} aria-pressed={row.favorite} onClick={() => void favorite(row)}>
+            {row.favorite ? '★ お気に入り' : '☆ お気に入り'}
+          </button>
+          <button onClick={() => setSelection({id:row.id,source:row.source})}>編集</button>
         </div>
       </li>)}
     </ul>
-    {items.length === 0 && <p>条件に一致するカードがありません。</p>}
-    {maxPage > 0 && <div className="actions">
-      <button disabled={!currentPage} onClick={() => setPage(currentPage-1)}>前のページ</button>
-      <span>{currentPage+1} / {maxPage+1}</span>
-      <button disabled={currentPage >= maxPage} onClick={() => setPage(currentPage+1)}>次のページ</button>
-    </div>}
-    {archives.length > 0 && <section className="secondary-section">
-      <button onClick={() => setArchived(value => !value)}>参照用カード（{archives.length}枚）</button>
-      {archived && archives.map(card => <ArchivedCard key={card.id} card={card}/>)}
+    {total === 0 && <p>条件に一致するカードがありません。</p>}
+    {total !== undefined && <Pages page={page} total={total} change={setPage}/>}
+    {!!list.data?.archives && <section className="secondary-section">
+      <button aria-expanded={archived} onClick={() => setArchived(value => !value)}>参照用カード（{list.data.archives}枚）</button>
+      {archived && <>
+        {archives.loading && <p role="status">参照用カードを読み込み中…</p>}
+        {archives.error && <p role="alert">{archives.error} <button onClick={archives.refresh}>再読み込み</button></p>}
+        {archives.data?.map(card => <ArchivedCard key={card.id} card={card}/>)}
+        <Pages page={archivePage} total={list.data.archives} change={setArchivePage}/>
+      </>}
     </section>}
   </>;
 }
 
-function ArchivedCard({card}: {card: Card}) {
-  const [history,setHistory] = useState<{recent:{day:string;grades:Record<string,number>}[];
-    legacy:{assignment_date:string;quality:number | null}[]} | null>(null);
-  const [error,setError] = useState('');
-  return <details onToggle={event => {
-    if (!event.currentTarget.open || history) return;
-    setError('');
-    void api<NonNullable<typeof history>>('card_history',{id:card.id}).then(setHistory).catch(err => setError(message(err)));
-  }}>
+function ArchivedCard({card}: {card:Archive}) {
+  const [open,setOpen] = useState(false);
+  const value = useStudyQuery<Card | null>('archive_detail',{id:card.id},open);
+  const history = useStudyQuery<History>('card_history',{id:card.id},open);
+  return <details onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>{card.title || '無題'} · {card.rank ?? 'B'}</summary>
-    <p className="preserve"><Highlight text={card.question}/></p>
-    {card.answer && <p className="preserve">{card.answer}</p>}
-    {error && <p role="alert">{error}</p>}
-    {history && <ul>
-      {history.recent.map(record => <li key={record.day}>{record.day}　
+    {(value.loading || history.loading) && <p role="status">参照用の内容を読み込み中…</p>}
+    {value.data && <>
+      <p className="preserve"><Highlight text={value.data.question}/></p>
+      {value.data.answer && <p className="preserve">{value.data.answer}</p>}
+    </>}
+    {value.error && <p role="alert">{value.error} <button onClick={value.refresh}>再読み込み</button></p>}
+    {history.error && <p role="alert">{history.error} <button onClick={history.refresh}>履歴を再読み込み</button></p>}
+    {history.data && <ul>
+      {history.data.recent.map(record => <li key={record.day}>{record.day}　
         {Object.entries(record.grades).map(([slot,grade]) => `${slot === '0' ? 'カード' : `穴${slot}`} ${grade === 0 ? '×' : grade < 4 ? '△' : '◯'}`).join('、')}
       </li>)}
-      {history.legacy.filter(record => !history.recent.some(other => other.day === record.assignment_date))
+      {history.data.legacy.filter(record => !history.data?.recent.some(other => other.day === record.assignment_date))
         .map((record,i) => <li key={`${record.assignment_date}-${i}`}>{record.assignment_date}　旧形式の評価 {record.quality ?? '記録なし'}</li>)}
     </ul>}
   </details>;

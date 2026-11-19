@@ -12,6 +12,7 @@ export default defineConfig({
   },
   projects:[
     {name:'mobile',use:{viewport:{width:390,height:844},isMobile:true,hasTouch:true}},
+    {name:'small-dark',use:{viewport:{width:360,height:760},isMobile:true,hasTouch:true,colorScheme:'dark'}},
     {name:'desktop',use:{viewport:{width:1280,height:900}}},
   ],
   webServer:{

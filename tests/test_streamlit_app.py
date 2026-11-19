@@ -53,3 +53,21 @@ def test_failed_session_creation_does_not_authenticate_user() -> None:
     assert session_state == {
         "_pending_cookie_action": {"action": "remove", "name": "session_token"}
     }
+
+
+def test_production_legacy_entry_does_not_open_legacy_authentication() -> None:
+    with (
+        patch("database.uses_reference_database", return_value=True),
+        patch("auth.get_all_users") as users,
+        patch("auth.validate_session_token") as validate,
+    ):
+        app = AppTest.from_file("app.py")
+        app.session_state["user_id"] = "old-session"
+        app.run()
+
+    assert not app.exception
+    assert app.title[0].value == "暗記カード"
+    assert app.get("link_button")[0].label == "Web版を開く"
+    assert not app.button
+    users.assert_not_called()
+    validate.assert_not_called()

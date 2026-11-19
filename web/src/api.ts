@@ -26,9 +26,10 @@ const messages: Record<string, string> = {
   'PGRST202': 'データベースの更新が必要です。',
 };
 
-export async function api<T>(action: string, payload: object = {}): Promise<T> {
+export async function api<T>(action: string, payload: object = {}, signal?: AbortSignal): Promise<T> {
   if (!supabase) throw new Error('Supabase の公開設定が必要です。');
-  const {data, error} = await supabase.rpc('study_api', {p_action: action, p_payload: payload});
+  const request = supabase.rpc('study_api', {p_action: action, p_payload: payload});
+  const {data, error} = await (signal ? request.abortSignal(signal) : request);
   if (error) {
     throw new StudyError(error.code, messages[error.code] ?? '接続または保存に失敗しました。時間をおいて再試行してください。');
   }
