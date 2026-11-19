@@ -183,24 +183,29 @@ def check_github_cli(environ: Mapping[str, str] | None = None) -> CheckResult:
 def check_published_app(url: str, supabase_url: str) -> CheckResult:
     """Verify the release, Google provider and anonymous API boundary without signing in."""
     base = url.rstrip("/")
+    user_agent = {"User-Agent": "memorization-app-health/1.0"}
+
+    def public_page(path: str):
+        return urlopen(Request(base + path, headers=user_agent), timeout=10)
+
     try:
-        with urlopen(base + "/release.json", timeout=10) as response:
+        with public_page("/release.json") as response:
             release = json.load(response)
         if not re.fullmatch(r"[a-f0-9]{40}", release["revision"]):
             raise ValueError("invalid release identifier")
         pages = ("/", "/review", "/practice", "/manage", "/add", "/stats")
-        with urlopen(base + "/", timeout=10) as response:
+        with public_page("/") as response:
             index = response.read()
             if not response.headers.get("Content-Security-Policy"):
                 raise ValueError("missing CSP")
         if hashlib.sha256(index).hexdigest() != release["index"]:
             raise ValueError("index differs from release")
         for path in pages[1:]:
-            with urlopen(base + path, timeout=10) as response:
+            with public_page(path) as response:
                 if response.read() != index:
                     raise ValueError("direct link differs from release")
         for path in ("/listen", "/listen/"):
-            with urlopen(base + path, timeout=10) as response:
+            with public_page(path) as response:
                 if urlparse(response.geturl()).path != "/review":
                     raise ValueError("retired link did not redirect")
         public_key = None
@@ -213,7 +218,7 @@ def check_published_app(url: str, supabase_url: str) -> CheckResult:
         for filename, digest in assets.items():
             if not re.fullmatch(r"assets/[A-Za-z0-9_.-]+\.(js|css)", filename):
                 raise ValueError("invalid asset reference")
-            with urlopen(base + "/" + filename, timeout=10) as response:
+            with public_page("/" + filename) as response:
                 bundle = response.read()
             if hashlib.sha256(bundle).hexdigest() != digest:
                 raise ValueError("asset differs from release")
@@ -222,7 +227,11 @@ def check_published_app(url: str, supabase_url: str) -> CheckResult:
                 public_key = match.group().decode("ascii")
         if not public_key:
             raise ValueError("database configuration differs from deploy target")
-        headers = {"apikey": public_key, "Content-Type": "application/json"}
+        headers = {
+            **user_agent,
+            "apikey": public_key,
+            "Content-Type": "application/json",
+        }
         with urlopen(
             Request(supabase_url.rstrip("/") + "/auth/v1/settings", headers=headers),
             timeout=10,
